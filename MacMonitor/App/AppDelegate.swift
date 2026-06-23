@@ -34,14 +34,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshStatusItem()
     }
 
-    /// Uygulama (Dock) ikonu olarak basit bir gösterge SF Symbol'ü kullan.
+    /// Uygulama (Dock) logosu: gradyanlı yuvarlak kare + ortada beyaz gösterge simgesi.
     private func setupAppIcon() {
-        let config = NSImage.SymbolConfiguration(pointSize: 128, weight: .regular)
-        if let icon = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
-                              accessibilityDescription: "MacMonitor")?
+        let side: CGFloat = 256
+        let icon = NSImage(size: NSSize(width: side, height: side))
+        icon.lockFocus()
+
+        // Gradyanlı yuvarlak kare arka plan (mavi → indigo)
+        let bg = NSRect(x: 18, y: 18, width: side - 36, height: side - 36)
+        NSGradient(colors: [.systemBlue, .systemIndigo])?
+            .draw(in: NSBezierPath(roundedRect: bg, xRadius: 56, yRadius: 56), angle: -90)
+
+        // Ortada beyaz gösterge simgesi
+        let config = NSImage.SymbolConfiguration(pointSize: 150, weight: .semibold)
+        if let symbol = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
+                                accessibilityDescription: "MacMonitor")?
             .withSymbolConfiguration(config) {
-            NSApp.applicationIconImage = icon
+            let white = Self.tintedWhite(symbol)
+            let g: CGFloat = 150
+            white.draw(in: NSRect(x: (side - g) / 2, y: (side - g) / 2, width: g, height: g))
         }
+
+        icon.unlockFocus()
+        NSApp.applicationIconImage = icon
+    }
+
+    /// Bir simgeyi beyaza boyar (yalın bağlamda sourceAtop ile yalnızca simge piksellerini).
+    private static func tintedWhite(_ image: NSImage) -> NSImage {
+        let out = NSImage(size: image.size)
+        out.lockFocus()
+        let rect = NSRect(origin: .zero, size: image.size)
+        image.draw(in: rect, from: rect, operation: .sourceOver, fraction: 1)
+        NSColor.white.set()
+        rect.fill(using: .sourceAtop)
+        out.unlockFocus()
+        return out
     }
 
     /// Son pencere kapansa bile uygulamayı çalışır durumda tut (menü bar widget'ı için).
@@ -110,11 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let image = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
                                accessibilityDescription: "Sistem yükü") {
-            image.isTemplate = true
+            image.isTemplate = true   // menü çubuğu rengine uyar (koyu barda beyaz)
             button.image = image
         }
-        button.contentTintColor = color
+        button.contentTintColor = nil   // ikon beyaz/uyumlu kalsın; renk yazıda
 
+        // Yük rengi yüzde yazısında (ikon beyaz).
         let title = String(format: " %.0f%% / %.0f%%", cpu, ram)
         button.attributedTitle = NSAttributedString(
             string: title,
