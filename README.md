@@ -1,77 +1,205 @@
+<div align="center">
+
 # MacMonitor
 
-Yerel (native) bir macOS sistem monitörü. İşlemci, bellek, fan/sıcaklık, çalışan
-işlemler ve genel sistem durumunu canlı izler; ayrıca **Groq destekli bir AI
-asistanı** ile sistemini gerçek verilere dayanarak analiz eder.
+**macOS için yerel sistem monitörü — gerçek zamanlı metrikler ve Groq destekli AI asistan.**
 
-> Swift 5 · SwiftUI · MVVM · minimum **macOS 13.0**
+İşlemci, bellek, fan/sıcaklık, çalışan işlemler ve genel sistem durumunu canlı izler.  
+Menü çubuğundan hızlı bakış; tam pencerede detaylı analiz.
+
+<br>
+
+[![macOS](https://img.shields.io/badge/macOS-13%2B-000000?style=flat-square&logo=apple&logoColor=white)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/Swift-5-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org/)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-MVVM-007AFF?style=flat-square&logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
+
+[İndir (DMG)](#hızlı-kurulum) · [Kaynaktan derle](#kaynaktan-derleme) · [AI Asistan](#ai-asistan) · [Sorun bildir](https://github.com/vidinsight-labs/MacMonitor/issues)
+
+</div>
+
+---
+
+## İçindekiler
+
+- [Neden MacMonitor?](#neden-macmonitor)
+- [Özellikler](#özellikler)
+- [Hızlı kurulum](#hızlı-kurulum)
+- [Kaynaktan derleme](#kaynaktan-derleme)
+- [DMG üretme](#dmg-üretme)
+- [AI Asistan](#ai-asistan)
+- [Mimari](#mimari)
+- [Proje yapısı](#proje-yapısı)
+- [Platform notları](#platform-notları)
+- [Bilinen sınırlar](#bilinen-sınırlar)
+- [Lisans](#lisans)
+
+---
+
+## Neden MacMonitor?
+
+| | MacMonitor | Activity Monitor |
+|---|---|---|
+| **Menü çubuğu widget'ı** | CPU/RAM + en çok kullanan 3 işlem | Yok |
+| **Geçmiş grafikleri** | 60 sn CPU geçmişi (Swift Charts) | Anlık görünüm |
+| **Yük olayları** | Eşik aşımında kayıt + sorumlu işlemler (1 ay) | Yok |
+| **AI teşhis** | Groq ile gerçek sistem verisine dayalı analiz | Yok |
+| **Fan / SMC** | Intel Mac'lerde tam okuma | Sınırlı |
+| **Türkçe arayüz** | Tamamen yerelleştirilmiş | Kısmen |
+
+MacMonitor, Activity Monitor'ün yerini almak için değil — **günlük kullanımda hızlı fark edilen sorunları** (yüksek CPU, bellek baskısı, termal kısılma) tek yerden takip etmek için tasarlandı.
 
 ---
 
 ## Özellikler
 
-- **İşlemci** — çekirdek başına kullanım (Performans/Verimlilik ayrımı), toplam yük, 60 sn'lik geçmiş grafiği (Swift Charts), CPU + Mac modeli.
-- **Bellek** — aktif/sabitlenmiş/sıkıştırılmış/boş dağılımı, basınç, takas (swap), açık kalma süresi + yeniden başlatma önerisi, "Belleği Temizle" (purge).
-- **Fanlar & Sıcaklık** — fan RPM ve SMC sıcaklık sensörleri, termal durum, fan kontrol arayüzü *(yalnızca Intel; Apple Silicon'da SMC anahtarları okunamaz)*.
-- **İşlemler** — sıralanabilir tablo (CPU/Bellek), arama, uygulama ikonları, **Zorla Kapat** (onaylı).
-- **Sistem** — termal kısılma durumu, Düşük Güç Modu, pil/güç, disk alanı, donanım bileşenleri (model, seri no, çip, Wi-Fi/Bluetooth/SSD — butonla).
-- **AI Asistan** — kendi **Groq** API anahtarınla; gerçek sistem durumunu bağlam alıp Türkçe teşhis/öneri verir.
-- **Yük Olayları** — CPU eşiği aştığında o anı + sorumlu işlemleri kaydeder (son 1 ay, diske kalıcı).
+### Asistan
+Groq API anahtarınla çalışan AI asistan; soru sorulduğunda **gerçek CPU, bellek ve işlem verisini** bağlam olarak kullanır. "Sistemimi Analiz Et" ile otomatik teşhis veya serbest soru.
 
-Tüm sayfalar koyu/açık moda uyumlu ortak bir tasarım dili paylaşır.
+### İşlemci
+- Çekirdek başına kullanım (Performans / Verimlilik ayrımı)
+- Toplam yük ve 60 saniyelik geçmiş grafiği
+- CPU modeli ve Mac donanım bilgisi
+- **Yük olayları:** CPU eşiği aştığında anı + sorumlu işlemleri kaydeder (son 1 ay, diske kalıcı)
+
+### Bellek
+- Aktif / sabitlenmiş / sıkıştırılmış / boş dağılımı
+- Bellek basıncı, takas (swap) kullanımı
+- Açık kalma süresi ve yeniden başlatma önerisi
+- **Belleği Temizle** (`purge`) tek tıkla
+
+### Fanlar & Sıcaklık
+- Fan RPM ve SMC sıcaklık sensörleri
+- Termal durum göstergesi
+- Fan kontrol arayüzü *(Intel Mac'lerde)*
+
+### İşlemler
+- CPU ve belleğe göre sıralanabilir tablo
+- Anlık arama ve uygulama ikonları
+- **Zorla Kapat** (onaylı diyalog)
+
+### Sistem
+- Termal kısılma (throttling) durumu
+- Düşük Güç Modu, pil/güç bilgisi
+- Disk alanı ve kullanım oranı
+- Donanım bileşenleri: model, seri no, çip, Wi-Fi / Bluetooth / SSD
+
+### Menü çubuğu
+Pencere kapalıyken bile çalışır. Popover'da CPU/RAM çubukları, en çok kaynak tüketen 3 işlem ve **Aç** düğmesi.
+
+> Tüm sayfalar koyu/açık moda uyumlu ortak bir tasarım dili paylaşır.
 
 ---
 
-## Kullanıcı kurulumu (DMG)
+## Hızlı kurulum
 
-1. Releases'tan `MacMonitor-x.y.dmg` dosyasını indir, çift tıkla.
-2. **MacMonitor**'u açılan pencerede **Applications**'a sürükle.
-3. İlk açılışta uyarı çıkarsa: uygulamaya **sağ tık → Aç**.
+### 1. DMG indir
 
-> Uygulama ad-hoc imzalıdır; imzasız/notarize edilmemiş dağıtımda macOS Gatekeeper
-> ilk açılışta uyarır (sağ tık → Aç ile geçilir). Geniş dağıtım için Apple Developer
-> ID imzası + notarization gerekir.
+[Releases](https://github.com/vidinsight-labs/MacMonitor/releases) sayfasından `MacMonitor-x.y.dmg` dosyasını indir.
+
+### 2. Uygulamayı kur
+
+1. DMG dosyasına çift tıkla
+2. **MacMonitor**'u **Applications** klasörüne sürükle
+3. DMG'yi çıkar
+
+### 3. İlk açılış
+
+macOS Gatekeeper uyarısı çıkarsa:
+
+```
+Sağ tık → Aç → Aç
+```
+
+> Uygulama ad-hoc imzalıdır. Geniş dağıtım için Apple Developer ID imzası + notarization gerekir.
 
 ---
 
 ## Kaynaktan derleme
 
-Xcode projesi `project.yml`'den **XcodeGen** ile üretilir (depoda tutulmaz).
+Xcode projesi `project.yml` dosyasından **XcodeGen** ile üretilir (`.xcodeproj` depoda tutulmaz).
+
+**Gereksinimler:** macOS 13+, Xcode 15+ (tam Xcode — Command Line Tools yeterli değil)
 
 ```bash
-git clone <repo-url>
-cd macbook-monitor
+git clone https://github.com/vidinsight-labs/MacMonitor.git
+cd MacMonitor
 
-brew install xcodegen        # bir kez
-xcodegen generate            # MacMonitor.xcodeproj üretir
-open MacMonitor.xcodeproj    # Xcode'da aç → Cmd+R
+brew install xcodegen    # bir kez
+xcodegen generate        # MacMonitor.xcodeproj üretir
+open MacMonitor.xcodeproj
 ```
 
-Gereksinimler: **macOS 13+**, **Xcode 15+** (tam Xcode; sadece Command Line Tools yetmez).
+Xcode'da **Cmd+R** ile derle ve çalıştır.
 
 ---
 
 ## DMG üretme
 
 ```bash
-./scripts/build-dmg.sh        # MacMonitor-1.0.dmg üretir
+./scripts/build-dmg.sh        # MacMonitor-1.0.dmg
 ./scripts/build-dmg.sh 1.2    # sürüm belirterek
 ```
 
-Betik Release derler, `MacMonitor.app` + Applications kısayolunu paketler ve
-sıkıştırılmış bir `.dmg` çıkarır.
+Betik Release derlemesi yapar, `MacMonitor.app` + Applications kısayolunu paketler ve sıkıştırılmış `.dmg` çıkarır.
 
 ---
 
-## AI Asistan kurulumu
+## AI Asistan
 
-1. [console.groq.com](https://console.groq.com) adresinden **ücretsiz API anahtarı** al.
-2. Uygulamada **Asistan** sekmesi → anahtarı yapıştır → **Kaydet**.
-3. **Bağlan** → önerilen model otomatik seçilir (örn. `llama-3.3-70b-versatile`).
-4. **Sistemimi Analiz Et** veya serbest soru sor.
+### Kurulum
 
-- Anahtar yalnızca **macOS Keychain**'de saklanır (depoya/diske düz metin yazılmaz).
-- Soru sorulduğunda işlem ve sistem verisi seçilen modele (Groq) gönderilir — opt-in.
+1. [console.groq.com](https://console.groq.com) adresinden **ücretsiz API anahtarı** al
+2. Uygulamada **Asistan** sekmesine git → anahtarı yapıştır → **Kaydet**
+3. **Bağlan** → önerilen model otomatik seçilir (örn. `llama-3.3-70b-versatile`)
+4. **Sistemimi Analiz Et** veya serbest soru sor
+
+### Gizlilik
+
+| | |
+|---|---|
+| **Anahtar saklama** | Yalnızca macOS Keychain — diske düz metin yazılmaz |
+| **Veri paylaşımı** | Opt-in: soru sorulduğunda işlem/sistem verisi Groq'a gönderilir |
+| **Model kalitesi** | Büyük modeller (70B) Türkçe teşhiste belirgin daha iyi |
+
+---
+
+## Mimari
+
+```mermaid
+flowchart LR
+    subgraph UI
+        MV[MainView]
+        MB[MenuBarView]
+        SB[StatusBarView]
+    end
+
+    subgraph Core
+        SM[SystemMonitors]
+        SM --> CPU[CPUMonitor]
+        SM --> MEM[MemoryMonitor]
+        SM --> FAN[FanMonitor]
+        SM --> PROC[ProcessMonitor]
+        SM --> LE[LoadEventRecorder]
+    end
+
+    subgraph AI
+        AC[AIAssistant]
+        GC[GroqClient]
+        SC[SystemContext]
+        KS[KeychainStore]
+    end
+
+    MV --> SM
+    MB --> SM
+    AC --> GC
+    AC --> SC
+    SC --> SM
+    AC --> KS
+```
+
+**MVVM** mimarisi. Her monitör bir `ObservableObject`; tek bir `SystemMonitors` konteynerinde paylaşılır — hem ana pencere hem menü çubuğu aynı örnekleri kullanır (çift veri toplama yok). Veriler 2–5 saniyede bir `Timer` ile güncellenir.
+
+**Veri kaynakları:** `sysctl` · `mach` · `IOKit` (SMC) · `libproc`
 
 ---
 
@@ -80,33 +208,55 @@ sıkıştırılmış bir `.dmg` çıkarır.
 ```
 macbook-monitor/
 ├── MacMonitor/
-│   ├── App/          # Giriş noktası, AppDelegate (menü bar), SystemMonitors (paylaşılan)
-│   ├── Models/       # Veri yapıları (CPUData, MemoryData, FanData, ProcessData, LoadEvent)
-│   ├── Monitors/     # Veri toplama: sysctl / mach / IOKit (SMC) / libproc
-│   ├── Services/AI/  # KeychainStore, GroqClient, AIAssistant, SystemContext
-│   ├── Views/        # SwiftUI ekranları + DesignSystem (ortak kart/başlık/gösterge)
-│   └── Resources/    # entitlements
+│   ├── App/              # Giriş noktası, AppDelegate (menü bar), SystemMonitors
+│   ├── Models/           # CPUData, MemoryData, FanData, ProcessData, LoadEvent
+│   ├── Monitors/         # sysctl / mach / IOKit / libproc veri toplama
+│   ├── Services/AI/      # KeychainStore, GroqClient, AIAssistant, SystemContext
+│   ├── Views/            # SwiftUI ekranları + DesignSystem
+│   └── Resources/        # Entitlements
 ├── scripts/
-│   └── build-dmg.sh  # Release derler + .dmg üretir
-├── project.yml       # XcodeGen proje tanımı (KAYNAK — .xcodeproj bundan üretilir)
+│   └── build-dmg.sh      # Release derle + .dmg üret
+├── project.yml           # XcodeGen proje tanımı (kaynak)
 └── README.md
 ```
 
-**Mimari:** MVVM. Her monitör bir `ObservableObject`'tir ve tek bir `SystemMonitors`
-konteynerinde paylaşılır; hem ana pencere hem menü bar aynı örnekleri kullanır
-(çift veri toplama yok). Veriler her 2–5 sn'de bir `Timer` ile güncellenir.
+---
+
+## Platform notları
+
+| Özellik | Intel Mac | Apple Silicon |
+|---|:---:|:---:|
+| CPU kullanımı | ✅ | ✅ |
+| Bellek / swap | ✅ | ✅ |
+| İşlem listesi | ✅ | ✅ |
+| Termal kısılma | ✅ | ✅ |
+| Pil / güç | ✅ | ✅ |
+| Fan RPM / SMC sıcaklık | ✅ | ❌ |
+| CPU frekansı (SMC) | ✅ | ❌ |
+
+Apple Silicon'da SMC anahtarları Intel'e özgü olduğu için fan/sıcaklık metrikleri "okunamadı" gösterir. Termal kısılma, pil ve disk bilgileri `ProcessInfo` / IOKit ile normal çalışır.
 
 ---
 
 ## Bilinen sınırlar
 
-- **Apple Silicon'da fan/sıcaklık/CPU frekansı SMC ile okunamaz** (Intel anahtarları yok); bu metrikler "okunamadı/yok" gösterir. Termal kısılma durumu, pil ve disk ise `ProcessInfo`/IOKit ile çalışır.
-- **Sandbox kapalıdır** (SMC erişimi, `purge` ve ağ için gerekli) → App Store'a uygun değildir; doğrudan dağıtım içindir.
-- **Zorla Kapat** yalnızca kendi süreçlerinde çalışır; sistem süreçleri yetki gerektirir.
-- AI Türkçe kalitesi seçilen Groq modeline bağlıdır (büyük modeller belirgin daha iyi).
+- **Sandbox kapalıdır** — SMC erişimi, `purge` ve ağ için gerekli. App Store dağıtımına uygun değildir.
+- **Zorla Kapat** yalnızca kendi kullanıcı süreçlerinde çalışır; sistem süreçleri root yetkisi gerektirir.
+- **AI kalitesi** seçilen Groq modeline bağlıdır; büyük modeller Türkçe'de belirgin daha iyi sonuç verir.
+- **Ad-hoc imza** — ilk açılışta Gatekeeper uyarısı normaldir (Sağ tık → Aç).
 
 ---
 
 ## Lisans
 
-Bir lisans dosyası ekleyerek (örn. MIT) kullanım koşullarını belirtebilirsin.
+Henüz resmi bir lisans dosyası eklenmemiştir. Kullanım koşullarını belirlemek için depoya bir `LICENSE` dosyası (örn. MIT) eklenebilir.
+
+---
+
+<div align="center">
+
+**[⬆ Başa dön](#macmonitor)**
+
+Made with Swift & SwiftUI · [vidinsight-labs/MacMonitor](https://github.com/vidinsight-labs/MacMonitor)
+
+</div>
