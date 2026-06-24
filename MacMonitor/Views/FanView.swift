@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Fan ve sıcaklık sayfası — İşlemci/Bellek ile aynı tasarım dili.
 struct FanView: View {
+    @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: FanMonitor
 
     @State private var mode: FanMode = .system
@@ -18,7 +19,7 @@ struct FanView: View {
                 PageHeader(
                     icon: "fanblades",
                     gradient: [.teal, .cyan],
-                    title: "Fanlar ve Sıcaklık",
+                    title: t("Fanlar ve Sıcaklık", "Fans and Temperature"),
                     subtitle: headerSubtitle
                 )
 
@@ -26,22 +27,24 @@ struct FanView: View {
                     unavailableCard
                 }
 
-                thermalCard
+                if let lvl = fanLevel {
+                    StatusBanner(level: lvl, title: fanStatus.title, message: fanStatus.message)
+                }
                 temperaturesCard
                 fansCard
                 controlCard
             }
             .padding(20)
-            .frame(maxWidth: .infinity)
+            .centeredPageContent()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var headerSubtitle: String {
         if monitor.fans.isEmpty {
-            return "Pasif soğutma / sıcaklık"
+            return t("Pasif soğutma / sıcaklık", "Passive cooling / temperature")
         }
-        return "\(monitor.fans.count) fan"
+        return t("\(monitor.fans.count) fan", "\(monitor.fans.count) fan")
     }
 
     // MARK: - SMC yok uyarısı
@@ -50,51 +53,43 @@ struct FanView: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text("SMC sensörlerine erişilemedi.")
+            Text(t("SMC sensörlerine erişilemedi.", "Could not access SMC sensors."))
                 .foregroundStyle(.secondary)
         }
         .font(.callout)
         .card()
     }
 
-    // MARK: - Termal durum (cihazı bekletmeli mi)
+    // MARK: - Termal durum (sayfa üstü sade yargı)
 
-    private var thermalCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "thermometer.medium", title: "Termal Durum")
+    /// Sıcaklık okunabiliyorsa seviye (Genel Bakış ile ortak eşikler); okunamıyorsa nil.
+    private var fanLevel: Level? {
+        guard maxTemp != nil else { return nil }
+        return thermalLevel(maxTemp: maxTemp)
+    }
 
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(thermal.color)
-                    .frame(width: 12, height: 12)
-                Text(thermal.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(thermal.color)
-                Spacer()
-                if let t = maxTemp {
-                    Text("\(Int(t.rounded()))°C")
-                        .font(.title3.weight(.bold))
-                        .monospacedDigit()
-                        .foregroundStyle(thermal.color)
-                }
-            }
-
-            Text(thermal.advice)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var fanStatus: (title: String, message: String) {
+        let temp = maxTemp.map { " (\(Int($0.rounded()))°C)" } ?? ""
+        switch fanLevel {
+        case .normal:
+            return (t("Sıcaklık normal\(temp)", "Temperature normal\(temp)"), t("Güvenli aralıkta; cihazı bekletmene gerek yok.", "Within a safe range; no need to let the device rest."))
+        case .warning:
+            return (t("Sıcaklık yüksek\(temp)", "Temperature high\(temp)"), t("Yük altında ısınmış. Uzun sürerse ağır işleri azaltmayı düşün.", "Warmed up under load. If it persists, consider reducing heavy tasks."))
+        case .critical:
+            return (t("Sıcaklık kritik\(temp)", "Temperature critical\(temp)"), t("Çok sıcak! Ağır işleri durdurup cihazın soğumasını beklemen önerilir.", "Too hot! It's recommended to stop heavy tasks and let the device cool down."))
+        case nil:
+            return ("", "")
         }
-        .card()
     }
 
     // MARK: - Tüm sıcaklıklar
 
     private var temperaturesCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle(icon: "thermometer.sun", title: "Sıcaklıklar")
+            sectionTitle(icon: "thermometer.sun", title: t("Sıcaklıklar", "Temperatures"))
 
             if monitor.temperatures.isEmpty {
-                Text("Bu modelde sıcaklık sensörleri okunamıyor. (Apple Silicon, SMC'nin Intel sıcaklık anahtarlarını sağlamaz.)")
+                Text(t("Bu modelde sıcaklık sensörleri okunamıyor. (Apple Silicon, SMC'nin Intel sıcaklık anahtarlarını sağlamaz.)", "Temperature sensors can't be read on this model. (Apple Silicon doesn't expose the SMC's Intel temperature keys.)"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
@@ -139,10 +134,10 @@ struct FanView: View {
 
     private var tempLegend: some View {
         HStack(spacing: 16) {
-            legendDot(.blue, "Serin")
-            legendDot(.green, "Normal")
-            legendDot(.orange, "Ilık")
-            legendDot(.red, "Sıcak")
+            legendDot(.blue, t("Serin", "Cool"))
+            legendDot(.green, t("Normal", "Normal"))
+            legendDot(.orange, t("Ilık", "Warm"))
+            legendDot(.red, t("Sıcak", "Hot"))
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -159,14 +154,14 @@ struct FanView: View {
 
     private var fansCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle(icon: "fanblades.fill", title: "Fanlar")
+            sectionTitle(icon: "fanblades.fill", title: t("Fanlar", "Fans"))
 
             if monitor.fans.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "wind")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
-                    Text("Fan bulunamadı — bu model pasif soğutma (fansız) kullanıyor.")
+                    Text(t("Fan bulunamadı — bu model pasif soğutma (fansız) kullanıyor.", "No fan found — this model uses passive cooling (fanless)."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -188,11 +183,11 @@ struct FanView: View {
 
     private var controlCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "slider.horizontal.3", title: "Fan Yönetimi")
+            sectionTitle(icon: "slider.horizontal.3", title: t("Fan Yönetimi", "Fan Management"))
 
-            Picker("Mod", selection: $mode) {
-                Text("Sistem (Otomatik)").tag(FanMode.system)
-                Text("Manuel (Sabit Devir)").tag(FanMode.manual)
+            Picker(t("Mod", "Mode"), selection: $mode) {
+                Text(t("Sistem (Otomatik)", "System (Automatic)")).tag(FanMode.system)
+                Text(t("Manuel (Sabit Devir)", "Manual (Fixed Speed)")).tag(FanMode.manual)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -200,7 +195,7 @@ struct FanView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Hedef devir (master)")
+                    Text(t("Hedef devir (master)", "Target speed (master)"))
                     Spacer()
                     Text("\(Int(masterRPM)) RPM").monospacedDigit().foregroundStyle(.secondary)
                 }
@@ -209,14 +204,14 @@ struct FanView: View {
                     .disabled(true)
             }
 
-            Toggle("Fan bazlı ayar (her fan ayrı)", isOn: $perFan)
+            Toggle(t("Fan bazlı ayar (her fan ayrı)", "Per-fan setting (each fan separately)"), isOn: $perFan)
                 .disabled(true)
                 .font(.callout)
 
             Divider()
 
             Label {
-                Text("Fan kontrolü **yönetici izni** gerektirir ve yanlış ayar **aşırı ısınmaya** yol açabilir. Ayrıca bu Mac fansız olduğundan kontrol kullanılamıyor. Fanlı bir Intel Mac'te: **Sistem** modunda hızı macOS yönetir; **Manuel** modda master devir veya fan bazlı sabit devir ayarlanabilir.")
+                Text(t("Fan kontrolü **yönetici izni** gerektirir ve yanlış ayar **aşırı ısınmaya** yol açabilir. Ayrıca bu Mac fansız olduğundan kontrol kullanılamıyor. Fanlı bir Intel Mac'te: **Sistem** modunda hızı macOS yönetir; **Manuel** modda master devir veya fan bazlı sabit devir ayarlanabilir.", "Fan control requires **administrator permission**, and an incorrect setting can lead to **overheating**. Also, since this Mac is fanless, control is unavailable. On an Intel Mac with fans: in **System** mode macOS manages the speed; in **Manual** mode you can set a master speed or a per-fan fixed speed."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } icon: {
@@ -230,24 +225,6 @@ struct FanView: View {
 
     private var maxTemp: Double? {
         monitor.temperatures.map(\.celsius).max() ?? monitor.cpuTemperature
-    }
-
-    private var thermal: (color: Color, title: String, advice: String) {
-        guard let t = maxTemp else {
-            return (.secondary, "Okunamıyor",
-                    "Bu modelde sıcaklık okunamıyor; termal durum değerlendirilemiyor.")
-        }
-        switch t {
-        case ..<60:
-            return (.green, "Normal", "Sıcaklık güvenli aralıkta. Cihazı bekletmene gerek yok.")
-        case ..<80:
-            return (.yellow, "Ilık", "Yük altında ama normal aralıkta. Endişelenmene gerek yok.")
-        case ..<95:
-            return (.orange, "Sıcak", "Sıcaklık yüksek. Uzun sürerse ağır işleri azaltmayı düşün.")
-        default:
-            return (.red, "Kritik",
-                    "Çok sıcak! Ağır işleri durdurup cihazın soğumasını beklemen önerilir.")
-        }
     }
 }
 
@@ -265,6 +242,7 @@ func tempColor(_ celsius: Double) -> Color {
 // MARK: - Fan göstergesi
 
 struct FanGauge: View {
+    @ObservedObject private var loc = Localizer.shared
     let fan: FanData
 
     private var fraction: Double {
@@ -285,16 +263,16 @@ struct FanGauge: View {
                     Text("\(fan.currentRPM)")
                         .font(.title3.bold())
                         .monospacedDigit()
-                    Text("RPM")
+                    Text(t("RPM", "RPM"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
             .frame(width: 120, height: 120)
 
-            Text("Fan \(fan.index + 1)")
+            Text(t("Fan \(fan.index + 1)", "Fan \(fan.index + 1)"))
                 .font(.callout.weight(.medium))
-            Text("\(fan.minRPM)–\(fan.maxRPM) RPM")
+            Text(t("\(fan.minRPM)–\(fan.maxRPM) RPM", "\(fan.minRPM)–\(fan.maxRPM) RPM"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()

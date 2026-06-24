@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import IOKit.ps
+import AppKit
 
 /// Donanım bileşeni (model, Wi-Fi modülü, SSD vb.).
 struct HardwareComponent: Identifiable {
@@ -8,6 +9,30 @@ struct HardwareComponent: Identifiable {
     let icon: String
     let title: String
     let detail: String
+}
+
+/// Pil sağlığı (yalnızca dizüstülerde anlamlı). Apple'ın Ayarlar'da gösterdiğiyle aynı değerler.
+struct BatteryHealth {
+    var present = false
+    var cycleCount: Int?
+    var maxCapacityPercent: Int?   // ör. 92
+    var condition: String?         // "Good" / "Fair" / "Service Recommended" ...
+}
+
+/// "Yer Aç" satırında önerilen eylem.
+enum DiskAction {
+    case emptyTrash   // Çöp kutusunu boşalt
+    case reveal       // Klasörü Finder'da aç
+}
+
+/// Diskte yer kaplayan / boşaltılabilir bir konum.
+struct DiskItem: Identifiable {
+    let id = UUID()
+    let icon: String
+    let title: String
+    let path: String
+    let bytes: Int64
+    let action: DiskAction
 }
 
 /// Sistem durumu: güç/termal/disk (canlı, ucuz) + donanım envanteri (butonla, ağır).
@@ -28,16 +53,34 @@ final class SystemInfoMonitor: ObservableObject {
     @Published private(set) var diskFree: Int64 = 0
     @Published private(set) var diskTotal: Int64 = 0
 
+    /// Disk doluluk yüzdesi (tek kaynak; Genel Bakış, Sistem ve bildirimler bunu kullanır).
+    var diskUsedPercent: Double {
+        guard diskTotal > 0 else { return 0 }
+        return Double(diskTotal - diskFree) / Double(diskTotal) * 100
+    }
+
     // MARK: - Donanım (butonla)
 
     @Published private(set) var components: [HardwareComponent] = []
     @Published private(set) var isLoadingHardware = false
     @Published private(set) var hardwareLoaded = false
 
+    // MARK: - Yer Aç (disk kullanımı, butonla)
+
+    @Published private(set) var diskItems: [DiskItem] = []
+    @Published private(set) var isScanningDisk = false
+    @Published private(set) var diskScanDone = false
+    @Published var spaceMessage: String?     // çöp boşaltma vb. geri bildirim
+
+    // MARK: - Pil sağlığı (yavaş değişir → bir kez yüklenir)
+
+    @Published private(set) var batteryHealth = BatteryHealth()
+
     private var timer: Timer?
 
     init() {
         refreshLive()
+        loadBatteryHealth()
 
         // Termal/güç değişiminde anında güncelle (yoklama yapmaz).
         NotificationCenter.default.addObserver(
@@ -182,6 +225,120 @@ final class SystemInfoMonitor: ObservableObject {
         }
 
         return comps
+    }
+
+    // MARK: - Pil sağlığı
+
+    /// Pil sağlığını arka planda okur (yavaş değiştiği için sürekli değil).
+    func loadBatteryHealth() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let health = Self.readBatteryHealth()
+            DispatchQueue.main.async { self?.batteryHealth = health }
+        }
+    }
+
+    private static func readBatteryHealth() -> BatteryHealth {
+        guard let json = runSystemProfiler(["SPPowerDataType"]),
+              let items = json["SPPowerDataType"] as? [[String: Any]]
+        else { return BatteryHealth() }
+
+        for item in items {
+            guard let info = item["sppower_battery_health_info"] as? [String: Any] else { continue }
+            var health = BatteryHealth()
+            health.present = true
+            health.cycleCount = info["sppower_battery_cycle_count"] as? Int
+            health.condition = info["sppower_battery_health"] as? String
+            if let cap = info["sppower_battery_health_maximum_capacity"] as? String {
+                // "%92" / "92%" → 92. İlk rakam grubunu al (gömülü başka rakam varsa bozulmasın).
+                let digits = cap.drop(while: { !$0.isNumber }).prefix(while: { $0.isNumber })
+                health.maxCapacityPercent = Int(digits)
+            }
+            return health
+        }
+        return BatteryHealth()
+    }
+
+    // MARK: - Yer Aç: disk kullanımı (ağır, butonla)
+
+    /// Yer kaplayan / boşaltılabilir konumların boyutlarını arka planda hesaplar.
+    func scanDiskUsage() {
+        guard !isScanningDisk else { return }
+        isScanningDisk = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let items = Self.gatherDiskItems()
+            DispatchQueue.main.async {
+                self?.diskItems = items
+                self?.isScanningDisk = false
+                self?.diskScanDone = true
+            }
+        }
+    }
+
+    private static func gatherDiskItems() -> [DiskItem] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        // (ikon, başlık, yol, eylem)
+        let specs: [(String, String, String, DiskAction)] = [
+            ("trash",                "Çöp Kutusu",        home + "/.Trash",          .emptyTrash),
+            ("arrow.down.circle",    "İndirilenler",      home + "/Downloads",       .reveal),
+            ("menubar.dock.rectangle", "Masaüstü",        home + "/Desktop",         .reveal),
+            ("doc.on.doc",           "Belgeler",          home + "/Documents",       .reveal),
+            ("square.grid.2x2",      "Uygulamalar",       "/Applications",           .reveal),
+            ("internaldrive",        "Önbellek (Cache)",  home + "/Library/Caches",  .reveal),
+        ]
+
+        var items: [DiskItem] = []
+        for spec in specs {
+            guard FileManager.default.fileExists(atPath: spec.2),
+                  let bytes = duBytes(spec.2), bytes > 0 else { continue }
+            items.append(DiskItem(icon: spec.0, title: spec.1, path: spec.2,
+                                  bytes: bytes, action: spec.3))
+        }
+        return items.sorted { $0.bytes > $1.bytes }
+    }
+
+    /// `du -sk` ile bir klasörün toplam boyutu (byte). İzin engellenirse kısmi/nil döner.
+    private static func duBytes(_ path: String) -> Int64? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
+        process.arguments = ["-sk", path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()   // "Operation not permitted" gürültüsünü yut
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard let out = String(data: data, encoding: .utf8),
+                  let kbStr = out.split(separator: "\t").first?.trimmingCharacters(in: .whitespaces),
+                  let kb = Int64(kbStr)
+            else { return nil }
+            return kb * 1024
+        } catch {
+            return nil
+        }
+    }
+
+    /// Çöp kutusunu boşaltır (Finder üzerinden — kullanıcı dosyalarına dokunmaz).
+    func emptyTrash() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", "tell application \"Finder\" to empty the trash"]
+            process.standardError = Pipe()
+            let ok: Bool
+            do { try process.run(); process.waitUntilExit(); ok = process.terminationStatus == 0 }
+            catch { ok = false }
+            DispatchQueue.main.async {
+                self?.spaceMessage = ok ? "Çöp kutusu boşaltıldı."
+                                        : "Çöp boşaltılamadı (Finder izni gerekebilir)."
+                self?.scanDiskUsage()   // boyutları tazele
+            }
+        }
+    }
+
+    /// Bir klasörü Finder'da gösterir (hiçbir şey silmez).
+    func reveal(_ path: String) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
     private static func runSystemProfiler(_ types: [String]) -> [String: Any]? {

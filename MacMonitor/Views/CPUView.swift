@@ -3,22 +3,26 @@ import Charts
 
 /// İşlemci sayfası — kart tabanlı, modern düzen.
 struct CPUView: View {
+    @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: CPUMonitor
     @EnvironmentObject private var loadEvents: LoadEventRecorder
 
-    private let coreColumns = [GridItem(.adaptive(minimum: 132), spacing: 12)]
+    // Sabit 4 sütun: pencere büyüse de yerleşim değişmez (8 çekirdek → 4+4).
+    // Kutular pencere genişledikçe esner; sütun sayısı sabit kalır.
+    private let coreColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 headerCard
+                StatusBanner(level: cpuLevel, title: cpuStatus.title, message: cpuStatus.message)
                 heroCard
                 coresCard
                 historyCard
                 eventsCard
             }
             .padding(20)
-            .frame(maxWidth: .infinity)
+            .centeredPageContent()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -29,7 +33,7 @@ struct CPUView: View {
         PageHeader(
             icon: "cpu",
             gradient: [.blue, .indigo],
-            title: monitor.modelName.isEmpty ? "İşlemci" : monitor.modelName,
+            title: monitor.modelName.isEmpty ? t("İşlemci", "Processor") : monitor.modelName,
             subtitle: monitor.machineModel
         )
     }
@@ -40,18 +44,18 @@ struct CPUView: View {
         HStack(spacing: 28) {
             UsageGauge(value: monitor.totalUsage,
                        color: cpuUsageColor(monitor.totalUsage),
-                       caption: "Toplam Kullanım")
+                       caption: t("Toplam Kullanım", "Total Usage"))
                 .frame(width: 168, height: 168)
 
             VStack(alignment: .leading, spacing: 14) {
                 summaryRow(icon: "person.fill", tint: .blue,
-                           title: "Kullanıcı", value: avgUser)
+                           title: t("Kullanıcı", "User"), value: avgUser)
                 Divider()
                 summaryRow(icon: "gearshape.fill", tint: .purple,
-                           title: "Sistem", value: avgSystem)
+                           title: t("Sistem", "System"), value: avgSystem)
                 Divider()
                 summaryRow(icon: "arrow.up.to.line", tint: cpuUsageColor(peakCore),
-                           title: "En yüksek çekirdek", value: peakCore)
+                           title: t("En yüksek çekirdek", "Highest core"), value: peakCore)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -82,10 +86,10 @@ struct CPUView: View {
 
     private var coresCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle(icon: "square.grid.3x3.fill", title: "Çekirdekler")
+            sectionTitle(icon: "square.grid.3x3.fill", title: t("Çekirdekler", "Cores"))
 
             if monitor.cores.isEmpty {
-                placeholder("Veri toplanıyor…")
+                placeholder(t("Veri toplanıyor…", "Collecting data…"))
             } else {
                 LazyVGrid(columns: coreColumns, spacing: 12) {
                     ForEach(monitor.cores) { core in
@@ -101,8 +105,8 @@ struct CPUView: View {
 
     private var historyCard: some View {
         VStack(alignment: .leading, spacing: 4) {
-            sectionTitle(icon: "waveform.path.ecg", title: "Kullanım Geçmişi")
-            Text("Son 60 saniye · riskli eşik %\(Int(loadEvents.threshold))")
+            sectionTitle(icon: "waveform.path.ecg", title: t("Kullanım Geçmişi", "Usage History"))
+            Text(t("Son 60 saniye · riskli eşik %\(Int(loadEvents.threshold))", "Last 60 seconds · risky threshold %\(Int(loadEvents.threshold))"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 8)
@@ -130,7 +134,7 @@ struct CPUView: View {
                         .foregroundStyle(.orange.opacity(0.8))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
                         .annotation(position: .top, alignment: .trailing) {
-                            Text("riskli")
+                            Text(t("riskli", "risky"))
                                 .font(.caption2)
                                 .foregroundStyle(.orange)
                         }
@@ -150,14 +154,14 @@ struct CPUView: View {
                         AxisGridLine()
                         AxisValueLabel {
                             if let v = value.as(Int.self) {
-                                Text(v == 0 ? "şimdi" : "\(v)sn")
+                                Text(v == 0 ? t("şimdi", "now") : t("\(v)sn", "\(v)s"))
                             }
                         }
                     }
                 }
                 .frame(height: 180)
             } else {
-                placeholder("Veri toplanıyor…")
+                placeholder(t("Veri toplanıyor…", "Collecting data…"))
                     .frame(height: 180)
             }
         }
@@ -176,15 +180,15 @@ struct CPUView: View {
     private var eventsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                sectionTitle(icon: "exclamationmark.bubble", title: "Yük Olayları")
+                sectionTitle(icon: "exclamationmark.bubble", title: t("Yük Olayları", "Load Events"))
                 if !loadEvents.events.isEmpty {
-                    Button("Temizle") { loadEvents.clear() }
+                    Button(t("Temizle", "Clear")) { loadEvents.clear() }
                         .buttonStyle(.borderless)
                         .font(.caption)
                 }
             }
 
-            Text("CPU %\(Int(loadEvents.threshold)) üstüne çıktığında o an ve yükü alan işlemler kaydedilir. Son 1 ay saklanır.")
+            Text(t("CPU %\(Int(loadEvents.threshold)) üstüne çıktığında o an ve yükü alan işlemler kaydedilir. Son 1 ay saklanır.", "When CPU rises above %\(Int(loadEvents.threshold)), that moment and the processes taking up the load are recorded. Kept for the last 1 month."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -192,7 +196,7 @@ struct CPUView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(.green)
-                    Text("Riskli yük kaydı yok — sistem rahat.")
+                    Text(t("Riskli yük kaydı yok — sistem rahat.", "No risky load records — the system is relaxed."))
                         .foregroundStyle(.secondary)
                 }
                 .font(.callout)
@@ -221,7 +225,7 @@ struct CPUView: View {
                     Text(event.startedAt.formatted(date: .omitted, time: .standard))
                         .font(.callout.weight(.medium))
                         .monospacedDigit()
-                    Text("· tepe %\(Int(event.peak.rounded()))")
+                    Text(t("· tepe %\(Int(event.peak.rounded()))", "· peak %\(Int(event.peak.rounded()))"))
                         .font(.callout)
                         .foregroundStyle(cpuUsageColor(event.peak))
                 }
@@ -236,7 +240,7 @@ struct CPUView: View {
     }
 
     private func culpritText(_ event: LoadEvent) -> String {
-        guard !event.culprits.isEmpty else { return "İşlem bilgisi yok" }
+        guard !event.culprits.isEmpty else { return t("İşlem bilgisi yok", "No process information") }
         return event.culprits
             .map { "\($0.name) %\(Int($0.cpu.rounded()))" }
             .joined(separator: "  ·  ")
@@ -245,14 +249,31 @@ struct CPUView: View {
     // MARK: - Ortak parçalar
 
     private func placeholder(_ text: String) -> some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 24)
+        VStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 24)
     }
 
     // MARK: - Hesaplanan değerler
+
+    /// Sayfa üstü durum yargısı (ortak eşikler — Genel Bakış ile aynı kaynak).
+    private var cpuLevel: Level { .cpu(monitor.totalUsage) }
+
+    private var cpuStatus: (title: String, message: String) {
+        switch cpuLevel {
+        case .normal:
+            return (t("İşlemci rahat", "Processor relaxed"), t("Belirgin bir yavaşlama yok; sistem boşta sayılır.", "No noticeable slowdown; the system is essentially idle."))
+        case .warning:
+            return (t("İşlemci yoğun çalışıyor", "Processor working hard"), t("Şu an oldukça meşgul. Ağır uygulamalar ve çok sayıda sekme yükü artırır.", "It is quite busy right now. Heavy apps and many tabs increase the load."))
+        case .critical:
+            return (t("İşlemci çok yüklü", "Processor overloaded"), t("Uygulamalar yavaşlayabilir — aşağıdaki çekirdek ve yük olaylarından sebebi görebilirsin.", "Apps may slow down — you can find the cause in the cores and load events below."))
+        }
+    }
 
     private var avgUser: Double {
         let c = monitor.cores
@@ -292,20 +313,20 @@ struct CoreTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(format: "Core - %02d", core.id + 1))
-                        .font(.caption.weight(.semibold))
+                        .font(.callout.weight(.semibold))
                     if !core.kind.label.isEmpty {
                         Text("(\(core.kind.label))")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(kindTint)
                     }
                 }
                 Spacer()
                 Text("\(Int(core.usage.rounded()))%")
-                    .font(.callout.weight(.semibold))
+                    .font(.title3.weight(.bold))
                     .monospacedDigit()
                     .foregroundStyle(cpuUsageColor(core.usage))
             }
@@ -319,11 +340,11 @@ struct CoreTile: View {
                         .frame(width: geo.size.width * min(max(core.usage, 0), 100) / 100)
                 }
             }
-            .frame(height: 7)
+            .frame(height: 9)
         }
-        .padding(12)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.secondary.opacity(0.06))
         )
     }

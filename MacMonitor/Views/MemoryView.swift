@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Bellek sayfası — İşlemci sayfasıyla aynı tasarım dili (kart tabanlı).
 struct MemoryView: View {
+    @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: MemoryMonitor
 
     private var data: MemoryData { monitor.memory }
@@ -9,14 +10,14 @@ struct MemoryView: View {
     /// Yığılmış çubuk ve açıklama için segmentler.
     private var segments: [MemorySegment] {
         [
-            MemorySegment(label: "Aktif", color: .blue, bytes: data.active,
-                          description: "Uygulamaların şu an etkin kullandığı bellek."),
-            MemorySegment(label: "Sabitlenmiş", color: .orange, bytes: data.wired,
-                          description: "RAM'de kalması zorunlu sistem/çekirdek belleği; diske atılamaz."),
-            MemorySegment(label: "Sıkıştırılmış", color: .purple, bytes: data.compressed,
-                          description: "Az kullanılan verinin yer açmak için sıkıştırılmış hali."),
-            MemorySegment(label: "Boş", color: .gray, bytes: data.available,
-                          description: "Hemen kullanılabilir + önbellek (geri kazanılabilir) bellek.")
+            MemorySegment(label: t("Aktif", "Active"), color: .blue, bytes: data.active,
+                          description: t("Uygulamaların şu an etkin kullandığı bellek.", "Memory actively used by apps right now.")),
+            MemorySegment(label: t("Sabitlenmiş", "Wired"), color: .orange, bytes: data.wired,
+                          description: t("RAM'de kalması zorunlu sistem/çekirdek belleği; diske atılamaz.", "System/kernel memory that must stay in RAM; cannot be paged out.")),
+            MemorySegment(label: t("Sıkıştırılmış", "Compressed"), color: .purple, bytes: data.compressed,
+                          description: t("Az kullanılan verinin yer açmak için sıkıştırılmış hali.", "Rarely used data compressed to free up space.")),
+            MemorySegment(label: t("Boş", "Free"), color: .gray, bytes: data.available,
+                          description: t("Hemen kullanılabilir + önbellek (geri kazanılabilir) bellek.", "Immediately usable + cached (reclaimable) memory."))
         ]
     }
 
@@ -24,6 +25,7 @@ struct MemoryView: View {
         ScrollView {
             VStack(spacing: 16) {
                 headerCard
+                StatusBanner(level: memLevel, title: memStatus.title, message: memStatus.message)
                 heroCard
                 breakdownCard
                 swapCard
@@ -31,7 +33,7 @@ struct MemoryView: View {
                 manageCard
             }
             .padding(20)
-            .frame(maxWidth: .infinity)
+            .centeredPageContent()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -42,8 +44,8 @@ struct MemoryView: View {
         PageHeader(
             icon: "memorychip",
             gradient: [.purple, .indigo],
-            title: "Bellek",
-            subtitle: "\(gb(data.total)) toplam RAM"
+            title: t("Bellek", "Memory"),
+            subtitle: t("\(gb(data.total)) toplam RAM", "\(gb(data.total)) total RAM")
         )
     }
 
@@ -51,15 +53,15 @@ struct MemoryView: View {
 
     private var heroCard: some View {
         HStack(spacing: 28) {
-            UsageGauge(value: usedPercent, color: pressureColor, caption: "Kullanılan")
+            UsageGauge(value: usedPercent, color: pressureColor, caption: t("Kullanılan", "Used"))
                 .frame(width: 168, height: 168)
 
             VStack(alignment: .leading, spacing: 14) {
                 summaryRow(icon: "memorychip.fill", tint: .blue,
-                           title: "Kullanılan", valueText: gb(data.used))
+                           title: t("Kullanılan", "Used"), valueText: gb(data.used))
                 Divider()
                 summaryRow(icon: "checkmark.circle.fill", tint: .green,
-                           title: "Kullanılabilir", valueText: gb(data.available))
+                           title: t("Kullanılabilir", "Available"), valueText: gb(data.available))
                 Divider()
                 HStack(spacing: 12) {
                     Image(systemName: "gauge.with.dots.needle.bottom.50percent")
@@ -67,7 +69,7 @@ struct MemoryView: View {
                         .foregroundStyle(pressureColor)
                         .frame(width: 30, height: 30)
                         .background(Circle().fill(pressureColor.opacity(0.15)))
-                    Text("Bellek basıncı")
+                    Text(t("Bellek basıncı", "Memory pressure"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -108,7 +110,7 @@ struct MemoryView: View {
 
     private var breakdownCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle(icon: "chart.bar.fill", title: "Dağılım")
+            sectionTitle(icon: "chart.bar.fill", title: t("Dağılım", "Breakdown"))
 
             GeometryReader { geo in
                 HStack(spacing: 0) {
@@ -162,10 +164,10 @@ struct MemoryView: View {
 
     private var swapCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "internaldrive.fill", title: "Takas (Swap)")
+            sectionTitle(icon: "internaldrive.fill", title: t("Takas (Swap)", "Swap"))
 
             if data.swapTotal == 0 {
-                Text("Takas kullanılmıyor.")
+                Text(t("Takas kullanılmıyor.", "Swap is not in use."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
@@ -180,9 +182,9 @@ struct MemoryView: View {
                 .frame(height: 10)
 
                 HStack {
-                    Text("Kullanılan: \(gb(data.swapUsed))")
+                    Text(t("Kullanılan: \(gb(data.swapUsed))", "Used: \(gb(data.swapUsed))"))
                     Spacer()
-                    Text("Toplam: \(gb(data.swapTotal))")
+                    Text(t("Toplam: \(gb(data.swapTotal))", "Total: \(gb(data.swapTotal))"))
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -201,10 +203,10 @@ struct MemoryView: View {
 
     private var uptimeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "clock.arrow.circlepath", title: "Çalışma Süresi")
+            sectionTitle(icon: "clock.arrow.circlepath", title: t("Çalışma Süresi", "Uptime"))
 
             HStack {
-                Text("Cihazın açık kalma süresi")
+                Text(t("Cihazın açık kalma süresi", "Time the device has been powered on"))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(uptimeString)
@@ -241,17 +243,17 @@ struct MemoryView: View {
 
         if monitor.pressure == .critical || (swapHeavy && days >= 2) {
             return ("exclamationmark.arrow.circlepath", .red,
-                    "Yeniden başlatman önerilir",
-                    "Bellek baskı altında ve/veya takas yoğun kullanılıyor. Yeniden başlatmak belleği tamamen temizler.")
+                    t("Yeniden başlatman önerilir", "Restart recommended"),
+                    t("Bellek baskı altında ve/veya takas yoğun kullanılıyor. Yeniden başlatmak belleği tamamen temizler.", "Memory is under pressure and/or swap is heavily used. Restarting fully clears memory."))
         }
         if days >= 7 && (monitor.pressure == .warning || swapHeavy) {
             return ("arrow.clockwise.circle", .orange,
-                    "Yeniden başlatmayı düşünebilirsin",
-                    "Cihaz uzun süredir açık ve bellek biraz baskı altında. Yeniden başlatmak rahatlatabilir.")
+                    t("Yeniden başlatmayı düşünebilirsin", "You might consider restarting"),
+                    t("Cihaz uzun süredir açık ve bellek biraz baskı altında. Yeniden başlatmak rahatlatabilir.", "The device has been on for a long time and memory is slightly under pressure. Restarting can help."))
         }
         return ("checkmark.circle.fill", .green,
-                "Yeniden başlatmaya gerek yok",
-                "Bellek rahat. Gerekirse aşağıdan 'Belleği Temizle' ile inaktif belleği boşaltabilirsin.")
+                t("Yeniden başlatmaya gerek yok", "No need to restart"),
+                t("Bellek rahat. Gerekirse aşağıdan 'Belleği Temizle' ile inaktif belleği boşaltabilirsin.", "Memory is comfortable. If needed, you can free inactive memory below with 'Free Memory'."))
     }
 
     private var uptimeString: String {
@@ -259,18 +261,18 @@ struct MemoryView: View {
         let days = total / 86_400
         let hours = (total % 86_400) / 3_600
         let mins = (total % 3_600) / 60
-        if days > 0  { return "\(days) gün \(hours) saat" }
-        if hours > 0 { return "\(hours) saat \(mins) dk" }
-        return "\(mins) dk"
+        if days > 0  { return t("\(days) gün \(hours) saat", "\(days) d \(hours) h") }
+        if hours > 0 { return t("\(hours) saat \(mins) dk", "\(hours) h \(mins) min") }
+        return t("\(mins) dk", "\(mins) min")
     }
 
     // MARK: - Yönetim kartı (temizle)
 
     private var manageCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "wand.and.stars", title: "Bellek Yönetimi")
+            sectionTitle(icon: "wand.and.stars", title: t("Bellek Yönetimi", "Memory Management"))
 
-            Text("İnaktif (geri kazanılabilir) belleği boşaltır — `purge`. Yönetici parolası istenir.")
+            Text(t("İnaktif (geri kazanılabilir) belleği boşaltır — `purge`. Yönetici parolası istenir.", "Frees inactive (reclaimable) memory — `purge`. Administrator password is required."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -280,9 +282,9 @@ struct MemoryView: View {
                 HStack {
                     if monitor.isPurging {
                         ProgressView().controlSize(.small)
-                        Text("Temizleniyor…")
+                        Text(t("Temizleniyor…", "Cleaning…"))
                     } else {
-                        Label("Belleği Temizle", systemImage: "trash")
+                        Label(t("Belleği Temizle", "Free Memory"), systemImage: "trash")
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -301,6 +303,20 @@ struct MemoryView: View {
     }
 
     // MARK: - Hesaplanan değerler / biçimlendirme
+
+    /// Sayfa üstü durum yargısı — bellek basıncına göre (ortak kaynak).
+    private var memLevel: Level { .memory(monitor.pressure) }
+
+    private var memStatus: (title: String, message: String) {
+        switch memLevel {
+        case .normal:
+            return (t("Bellek rahat", "Memory is comfortable"), t("Yeterli boş bellek var; uygulamalar akıcı çalışır.", "There is enough free memory; apps run smoothly."))
+        case .warning:
+            return (t("Bellek baskı altında", "Memory under pressure"), t("Hafif yavaşlama olabilir. Gereksiz uygulama ve sekmeleri kapatmak rahatlatır.", "Slight slowdown is possible. Closing unneeded apps and tabs helps."))
+        case .critical:
+            return (t("Bellek kritik", "Memory critical"), t("Sistem yavaşlayabilir. Uygulama kapatmak veya cihazı yeniden başlatmak belleği boşaltır.", "The system may slow down. Closing apps or restarting the device frees memory."))
+        }
+    }
 
     private var usedPercent: Double {
         data.total > 0 ? Double(data.used) / Double(data.total) * 100 : 0

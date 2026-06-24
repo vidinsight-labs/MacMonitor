@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Menü bar popover'ı (300×200): CPU/RAM çubukları, en çok kullanan 3 işlem ve "Aç" düğmesi.
 struct MenuBarView: View {
+    @ObservedObject private var loc = Localizer.shared
     @ObservedObject var cpuMonitor: CPUMonitor
     @ObservedObject var memoryMonitor: MemoryMonitor
     @ObservedObject var processMonitor: ProcessMonitor
@@ -28,12 +29,12 @@ struct MenuBarView: View {
 
             Divider()
 
-            Text("En çok kullanan işlemler")
+            Text(t("En çok kullanan işlemler", "Top resource-using processes"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             if topProcesses.isEmpty {
-                Text("Veri toplanıyor…")
+                Text(t("Veri toplanıyor…", "Collecting data…"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -50,16 +51,17 @@ struct MenuBarView: View {
                 }
             }
 
-            Spacer(minLength: 0)
-
             Button(action: onOpen) {
-                Text("Aç")
+                Text(t("Aç", "Open"))
                     .frame(maxWidth: .infinity)
             }
             .controlSize(.regular)
+            .padding(.top, 4)
         }
         .padding(12)
-        .frame(width: 300, height: 200)
+        // Sabit genişlik; yükseklik içeriğe göre (sabit 200 px içeriği taşırıyordu).
+        .frame(width: 300)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: - Kullanım çubuğu

@@ -18,7 +18,15 @@ final class SystemMonitors {
     /// Güç/termal/disk (canlı) + donanım envanteri (butonla).
     let systemInfo = SystemInfoMonitor()
 
+    /// Kalıcılık öğeleri + imza durumu (butonla — Güvenlik Bakışı).
+    let security = SecurityMonitor()
+
+    /// Kritik durumda kullanıcıyı uyaran proaktif bildirimler.
+    let notifications: NotificationManager
+
     private init() {
         loadEvents = LoadEventRecorder(cpu: cpu, process: process)
+        notifications = NotificationManager(cpu: cpu, memory: memory,
+                                            systemInfo: systemInfo, process: process)
     }
 }

@@ -20,7 +20,6 @@ struct MacMonitorApp: App {
 /// SwiftUI'nin `openWindow` eylemini yakalayıp `WindowCoordinator` üzerinden paylaşır.
 private struct RootView: View {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var assistant = AIAssistant()
 
     var body: some View {
         MainView()
@@ -30,7 +29,8 @@ private struct RootView: View {
             .environmentObject(SystemMonitors.shared.process)
             .environmentObject(SystemMonitors.shared.loadEvents)
             .environmentObject(SystemMonitors.shared.systemInfo)
-            .environmentObject(assistant)
+            .environmentObject(SystemMonitors.shared.security)
+            .environmentObject(SystemMonitors.shared.notifications)
             .onAppear {
                 WindowCoordinator.shared.open = { openWindow(id: "main") }
             }

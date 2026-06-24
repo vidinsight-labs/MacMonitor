@@ -3,6 +3,7 @@ import AppKit
 
 /// Process listesi.
 struct ProcessView: View {
+    @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: ProcessMonitor
 
     @State private var searchText = ""
@@ -30,8 +31,8 @@ struct ProcessView: View {
             PageHeader(
                 icon: "list.bullet.rectangle",
                 gradient: [.green, .mint],
-                title: "İşlemler",
-                subtitle: "\(monitor.processes.count) süreç çalışıyor · ilk 20 gösteriliyor"
+                title: t("İşlemler", "Processes"),
+                subtitle: t("\(monitor.processes.count) süreç çalışıyor · ilk 20 gösteriliyor", "\(monitor.processes.count) processes running · showing top 20")
             )
 
             controls
@@ -41,7 +42,7 @@ struct ProcessView: View {
             }
 
             Table(displayed, selection: $selection, sortOrder: $sortOrder) {
-                TableColumn("Ad", value: \.name) { proc in
+                TableColumn(t("Ad", "Name"), value: \.name) { proc in
                     HStack(spacing: 6) {
                         ProcessIconView(proc: proc)
                         Text(proc.name).lineLimit(1)
@@ -54,19 +55,19 @@ struct ProcessView: View {
                 }
                 .width(60)
 
-                TableColumn("İşlemci (CPU)", value: \.cpuUsage) { proc in
+                TableColumn(t("İşlemci (CPU)", "Processor (CPU)"), value: \.cpuUsage) { proc in
                     Text(String(format: "%.1f%%", proc.cpuUsage))
                         .monospacedDigit()
                         .foregroundStyle(proc.cpuUsage >= 50 ? .primary : .secondary)
                 }
                 .width(min: 100, ideal: 110)
 
-                TableColumn("Bellek (RAM)", value: \.memoryUsage) { proc in
+                TableColumn(t("Bellek (RAM)", "Memory (RAM)"), value: \.memoryUsage) { proc in
                     Text(Self.memoryString(proc.memoryUsage)).monospacedDigit()
                 }
                 .width(min: 100, ideal: 110)
 
-                TableColumn("Kullanıcı", value: \.user) { proc in
+                TableColumn(t("Kullanıcı", "User"), value: \.user) { proc in
                     Text(proc.user).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .width(min: 80, ideal: 100)
@@ -79,9 +80,9 @@ struct ProcessView: View {
         }
         .padding(20)
         .background(Color(nsColor: .windowBackgroundColor))
-        .alert("Zorla kapatılsın mı?", isPresented: $confirmQuit) {
-            Button("Vazgeç", role: .cancel) {}
-            Button("Zorla Kapat", role: .destructive) {
+        .alert(t("Zorla kapatılsın mı?", "Force quit?"), isPresented: $confirmQuit) {
+            Button(t("Vazgeç", "Cancel"), role: .cancel) {}
+            Button(t("Zorla Kapat", "Force Quit"), role: .destructive) {
                 monitor.forceQuit(selection)
             }
         } message: {
@@ -93,9 +94,9 @@ struct ProcessView: View {
     private var confirmMessage: String {
         if selection.count == 1,
            let name = monitor.processes.first(where: { selection.contains($0.pid) })?.name {
-            return "\(name) zorla kapatılacak. Kaydedilmemiş veriler kaybolabilir."
+            return t("\(name) zorla kapatılacak. Kaydedilmemiş veriler kaybolabilir.", "\(name) will be force quit. Unsaved data may be lost.")
         }
-        return "\(selection.count) işlem zorla kapatılacak. Kaydedilmemiş veriler kaybolabilir."
+        return t("\(selection.count) işlem zorla kapatılacak. Kaydedilmemiş veriler kaybolabilir.", "\(selection.count) processes will be force quit. Unsaved data may be lost.")
     }
 
     // MARK: - Zorla kapat geri bildirim bandı
@@ -122,8 +123,8 @@ struct ProcessView: View {
     private var controls: some View {
         HStack(spacing: 12) {
             Picker("", selection: $sortMode) {
-                Text("İşlemci (CPU)").tag(SortMode.cpu)
-                Text("Bellek (RAM)").tag(SortMode.memory)
+                Text(t("İşlemci (CPU)", "Processor (CPU)")).tag(SortMode.cpu)
+                Text(t("Bellek (RAM)", "Memory (RAM)")).tag(SortMode.memory)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -140,17 +141,17 @@ struct ProcessView: View {
             Button {
                 confirmQuit = true
             } label: {
-                Label("Zorla Kapat", systemImage: "xmark.octagon.fill")
+                Label(t("Zorla Kapat", "Force Quit"), systemImage: "xmark.octagon.fill")
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .disabled(selection.isEmpty)
-            .help(selection.isEmpty ? "Önce bir işlem seç" : "Seçili işlemi zorla kapat")
+            .help(selection.isEmpty ? t("Önce bir işlem seç", "Select a process first") : t("Seçili işlemi zorla kapat", "Force quit the selected process"))
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("İşlem ara", text: $searchText)
+                TextField(t("İşlem ara", "Search process"), text: $searchText)
                     .textFieldStyle(.plain)
                     .frame(width: 160)
                 if !searchText.isEmpty {

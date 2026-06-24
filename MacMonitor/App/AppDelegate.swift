@@ -19,6 +19,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let processMonitor = SystemMonitors.shared.process
 
     private var statusItem: NSStatusItem?
+
+    /// Menü çubuğu ikonu bir kez üretilir (her ölçümde yeniden NSImage yaratmamak için).
+    private lazy var gaugeImage: NSImage? = {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let image = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
+                            accessibilityDescription: t("Sistem yükü", "System load"))?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true   // menü çubuğu rengine uyar
+        return image
+    }()
+
     private let popover = NSPopover()
     private var cancellables = Set<AnyCancellable>()
 
@@ -79,9 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Kurulum
 
     private func setupPopover() {
-        popover.contentSize = NSSize(width: 300, height: 200)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
+        let hosting = NSHostingController(
             rootView: MenuBarView(
                 cpuMonitor: cpuMonitor,
                 memoryMonitor: memoryMonitor,
@@ -92,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             )
         )
+        // Popover'ı SwiftUI içeriğinin gerçek boyutuna göre ayarla (sabit 200 px taşırıyordu).
+        hosting.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hosting
     }
 
     private func setupStatusItem() {
@@ -99,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageLeading
+        item.button?.image = gaugeImage   // ikon sabit; bir kez ayarla
         statusItem = item
     }
 
@@ -135,14 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             color = .secondaryLabelColor   // karanlık/aydınlık moda uyumlu gri
         }
 
-        if let image = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
-                               accessibilityDescription: "Sistem yükü") {
-            image.isTemplate = true   // menü çubuğu rengine uyar (koyu barda beyaz)
-            button.image = image
-        }
-        button.contentTintColor = nil   // ikon beyaz/uyumlu kalsın; renk yazıda
-
-        // Yük rengi yüzde yazısında (ikon beyaz).
+        // İkon setupStatusItem'da bir kez ayarlandı (her ölçümde yeniden üretilmez).
+        // Kısa biçim (dolgu yok → menü çubuğunda taşmaz). Monospaced rakam, hafif kaymayı azaltır.
         let title = String(format: " %.0f%% / %.0f%%", cpu, ram)
         button.attributedTitle = NSAttributedString(
             string: title,
