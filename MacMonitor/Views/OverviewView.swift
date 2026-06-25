@@ -19,7 +19,11 @@ struct OverviewView: View {
 
     @State private var healthCheckRun = false
 
-    @Environment(\.contentWidth) private var contentWidth
+    /// Genel Bakış metrikleri: her zaman 2 sütun (İşlemci+Bellek, Sıcaklık+Disk).
+    private let metricColumns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
 
     var body: some View {
         ScrollView {
@@ -37,7 +41,7 @@ struct OverviewView: View {
 
                 smartInsightsCard
 
-                LazyVGrid(columns: PageLayout.metricGridColumns(for: contentWidth), spacing: 12) {
+                LazyVGrid(columns: metricColumns, spacing: 12) {
                     MetricCard(icon: "cpu", title: t("İşlemci", "Processor"),
                                value: "%\(Int(cpuMonitor.totalUsage.rounded()))",
                                level: cpuLevel)
@@ -312,8 +316,7 @@ struct OverviewView: View {
     }
 
     private var tempValue: String {
-        if let t = maxTemp { return "\(Int(t.rounded()))°C" }
-        return "—"
+        thermalDisplayText(maxTemp: maxTemp, thermalState: systemInfo.thermalState)
     }
 
     /// En kötü metrik genel sağlığı belirler.

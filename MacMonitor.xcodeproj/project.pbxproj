@@ -30,7 +30,7 @@
 		5CDB439FB0006D794192C21F /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4BCBD7554311D8EE1BEFB0 /* WidgetSnapshot.swift */; };
 		60B6F28F161D10ACB209F18B /* WidgetDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E70571F193EF34743CB92A4 /* WidgetDataStore.swift */; };
 		6E1FFA47A32BC7B2BED9C5F3 /* ProcessMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE0FDA23545B5F19F36EDEE5 /* ProcessMonitor.swift */; };
-		6E567E491FE1C330A6C43A10 /* MacMonitorWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2F42311BBE5B361C001A58F3 /* MacMonitorWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6E567E491FE1C330A6C43A10 /* MacMonitorWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2F42311BBE5B361C001A58F3 /* MacMonitorWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		72EA111240EC76961784AD1A /* FanMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA6795B7908176862982916 /* FanMonitor.swift */; };
 		7812050B3052647CAB45CC97 /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB2C60089B525A44864FFE2 /* HelpView.swift */; };
 		792FC154738D5954BD362704 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C27302D04D791A44DFCCE8 /* Localization.swift */; };
@@ -64,7 +64,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				6E567E491FE1C330A6C43A10 /* MacMonitorWidgetExtension.appex in Embed Foundation Extensions */,
+				6E567E491FE1C330A6C43A10 /* MacMonitorWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -84,7 +84,7 @@
 		2BE663062A164FF50AEA5A5B /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		2E70571F193EF34743CB92A4 /* WidgetDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataStore.swift; sourceTree = "<group>"; };
 		2F01EF23844F73A716485ABF /* SystemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemView.swift; sourceTree = "<group>"; };
-		2F42311BBE5B361C001A58F3 /* MacMonitorWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MacMonitorWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F42311BBE5B361C001A58F3 /* MacMonitorWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MacMonitorWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		321FDCDABD11F6C980C23890 /* CodeSigningHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSigningHelper.swift; sourceTree = "<group>"; };
 		34955E158139D57CB4AEBAAA /* CPUData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUData.swift; sourceTree = "<group>"; };
 		39EF9DF604D44F110E13E700 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
@@ -229,7 +229,7 @@
 			isa = PBXGroup;
 			children = (
 				F5EC59DCDA5FABDA409CDBCB /* MacMonitor.app */,
-				2F42311BBE5B361C001A58F3 /* MacMonitorWidgetExtension.appex */,
+				2F42311BBE5B361C001A58F3 /* MacMonitorWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -296,7 +296,7 @@
 			packageProductDependencies = (
 			);
 			productName = MacMonitorWidgetExtension;
-			productReference = 2F42311BBE5B361C001A58F3 /* MacMonitorWidgetExtension.appex */;
+			productReference = 2F42311BBE5B361C001A58F3 /* MacMonitorWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -414,6 +414,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MacMonitorWidget/Resources/MacMonitorWidget.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XNR8Y9T3TG;
 				INFOPLIST_FILE = MacMonitorWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -433,6 +434,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = MacMonitor/Resources/MacMonitor.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XNR8Y9T3TG;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSUIElement = NO;
@@ -587,6 +589,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = MacMonitor/Resources/MacMonitor.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XNR8Y9T3TG;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSUIElement = NO;
@@ -611,6 +614,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MacMonitorWidget/Resources/MacMonitorWidget.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = XNR8Y9T3TG;
 				INFOPLIST_FILE = MacMonitorWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -232,7 +232,19 @@ func thermalLevel(maxTemp: Double?, thermalState: ProcessInfo.ThermalState? = ni
     return lvl
 }
 
-// Metrik → durum seviyesi eşikleri. **Tek** kaynak: hem Genel Bakış hem detay sayfaları kullanır
+/// Sıcaklık kartı metni: SMC °C varsa onu, yoksa macOS termal durum etiketini gösterir.
+func thermalDisplayText(maxTemp: Double?, thermalState: ProcessInfo.ThermalState) -> String {
+    if let t = maxTemp { return "\(Int(t.rounded()))°C" }
+    switch thermalState {
+    case .nominal:            return t("Normal", "Normal")
+    case .fair:               return t("Hafif", "Mild")
+    case .serious:            return t("Yüksek", "High")
+    case .critical:           return t("Kritik", "Critical")
+    @unknown default:         return "—"
+    }
+}
+
+// Metrik → durum seviyesi eşikleri.
 // (eskiden her sayfada ayrı yazılıydı; tek taraflı değişiklik sayfa-arası çelişki üretebiliyordu).
 extension Level {
     /// İşlemci yükü: <70 normal, <90 yüksek, ≥90 kritik.
