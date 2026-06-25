@@ -2,6 +2,154 @@ import SwiftUI
 
 // Tüm sayfaların paylaştığı ortak tasarım dili (kart, bölüm başlığı, dairesel gösterge).
 
+// MARK: - Responsive layout
+
+private struct ContentWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 800
+}
+
+extension EnvironmentValues {
+    var contentWidth: CGFloat {
+        get { self[ContentWidthKey.self] }
+        set { self[ContentWidthKey.self] = newValue }
+    }
+}
+
+struct WindowWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 1000
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct DetailWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 800
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+enum ContentWidthTier {
+    case compact, regular, wide
+
+    init(width: CGFloat) {
+        if width < 560 { self = .compact }
+        else if width < 900 { self = .regular }
+        else { self = .wide }
+    }
+}
+
+enum PageLayout {
+    static let sidebarCollapseThreshold: CGFloat = 820
+    static let maxContentWidth: CGFloat = 1100
+
+    static func tier(for width: CGFloat) -> ContentWidthTier {
+        ContentWidthTier(width: width)
+    }
+
+    static func pagePadding(for width: CGFloat) -> CGFloat {
+        switch ContentWidthTier(width: width) {
+        case .compact:  return 16
+        case .regular:  return 20
+        case .wide:     return 24
+        }
+    }
+
+    static func metricGridColumns(for width: CGFloat, spacing: CGFloat = 12) -> [GridItem] {
+        let count: Int
+        switch ContentWidthTier(width: width) {
+        case .compact:  count = 2
+        case .regular:  count = 3
+        case .wide:     count = 4
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
+    }
+
+    static func coreGridColumns(for width: CGFloat, spacing: CGFloat = 12) -> [GridItem] {
+        let count: Int
+        switch ContentWidthTier(width: width) {
+        case .compact:  count = 2
+        case .regular:  count = 3
+        case .wide:     count = 4
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
+    }
+
+    static func contentMaxWidth(for width: CGFloat) -> CGFloat {
+        let effective = max(width, 320)
+        let padding = pagePadding(for: effective)
+        return min(maxContentWidth, max(0, effective - padding * 2))
+    }
+}
+
+extension View {
+    /// Detay sütununun genişliğini yukarı iletir (sayfa layout'u için).
+    func reportDetailWidth() -> some View {
+        background {
+            GeometryReader { geo in
+                Color.clear.preference(key: DetailWidthKey.self, value: geo.size.width)
+            }
+        }
+    }
+
+    /// Pencere genişliğini yukarı iletir (sidebar gizleme için).
+    func reportWindowWidth() -> some View {
+        background {
+            GeometryReader { geo in
+                Color.clear.preference(key: WindowWidthKey.self, value: geo.size.width)
+            }
+        }
+    }
+
+    /// Genişliğe göre padding + ortalanmış içerik sınırı.
+    func responsivePageLayout() -> some View {
+        ResponsivePageLayout(content: self)
+    }
+}
+
+private struct ResponsivePageLayout<Content: View>: View {
+    @Environment(\.contentWidth) private var contentWidth
+    let content: Content
+
+    var body: some View {
+        content
+            .padding(PageLayout.pagePadding(for: contentWidth))
+            .frame(maxWidth: PageLayout.contentMaxWidth(for: contentWidth))
+            .frame(maxWidth: .infinity)
+    }
+}
+
+extension View {
+    /// Xcode preview'larında farklı pencere genişliklerini simüle eder.
+    func previewLayout(width: CGFloat, height: CGFloat, detailWidth: CGFloat? = nil) -> some View {
+        environment(\.contentWidth, detailWidth ?? max(400, width - 180))
+            .frame(width: width, height: height)
+    }
+}
+
+/// Gauge + özet: geniş alanda yatay, dar alanda dikey.
+struct HeroMetricLayout<Gauge: View, Summary: View>: View {
+    var spacing: CGFloat = 28
+    @ViewBuilder let gauge: () -> Gauge
+    @ViewBuilder let summary: () -> Summary
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: spacing) {
+                gauge()
+                summary()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            VStack(spacing: spacing) {
+                gauge()
+                    .frame(maxWidth: .infinity)
+                summary()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
 extension View {
     /// Ortak kart kabı — yuvarlak köşe + ince çerçeve, dark mode uyumlu.
     func card() -> some View {
@@ -21,6 +169,7 @@ extension View {
 
 extension View {
     /// Geniş pencerede içerik genişliğini sınırlar ve ortalar (okunabilirlik).
+    /// Yeni sayfalarda `responsivePageLayout()` tercih edilir.
     func centeredPageContent(maxWidth: CGFloat = 1100) -> some View {
         self
             .frame(maxWidth: maxWidth)

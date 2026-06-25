@@ -25,8 +25,7 @@ struct SystemView: View {
                 spaceCard
                 hardwareCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -428,8 +427,8 @@ struct SystemView: View {
     }
 }
 
-#Preview {
+#Preview("1280×800") {
     SystemView()
         .environmentObject(SystemInfoMonitor())
-        .frame(width: 640, height: 820)
+        .previewLayout(width: 1280, height: 800, detailWidth: 1000)
 }

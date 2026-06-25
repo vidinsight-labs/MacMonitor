@@ -34,8 +34,7 @@ struct FanView: View {
                 fansCard
                 controlCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -50,10 +49,11 @@ struct FanView: View {
     // MARK: - SMC yok uyarısı
 
     private var unavailableCard: some View {
-        HStack(spacing: 10) {
+        let avail = FeatureCapability.availability(for: .fanSMC)
+        return HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text(t("SMC sensörlerine erişilemedi.", "Could not access SMC sensors."))
+            Text(avail.reason)
                 .foregroundStyle(.secondary)
         }
         .font(.callout)
@@ -280,8 +280,8 @@ struct FanGauge: View {
     }
 }
 
-#Preview {
+#Preview("720×520") {
     FanView()
         .environmentObject(FanMonitor())
-        .frame(width: 640, height: 860)
+        .previewLayout(width: 720, height: 520, detailWidth: 700)
 }

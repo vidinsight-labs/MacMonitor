@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Menü bar popover'ı (300×200): CPU/RAM çubukları, en çok kullanan 3 işlem ve "Aç" düğmesi.
+/// Menü bar popover'ı: CPU/RAM, akıllı öneri, top işlemler ve "Aç" düğmesi.
 struct MenuBarView: View {
     @ObservedObject private var loc = Localizer.shared
     @ObservedObject var cpuMonitor: CPUMonitor
     @ObservedObject var memoryMonitor: MemoryMonitor
     @ObservedObject var processMonitor: ProcessMonitor
+    @ObservedObject var smartInsights: SmartInsightsEngine
 
-    /// Ana pencereyi açma eylemi (AppDelegate tarafından sağlanır).
     var onOpen: () -> Void
 
     private var ramPercent: Double {
@@ -19,6 +19,10 @@ struct MenuBarView: View {
         Array(processMonitor.processes.prefix(3))
     }
 
+    private var topInsight: SmartInsight? {
+        smartInsights.insights.first { $0.colorName != "green" } ?? smartInsights.insights.first
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("MacMonitor")
@@ -26,6 +30,24 @@ struct MenuBarView: View {
 
             usageBar(label: "CPU", value: cpuMonitor.totalUsage)
             usageBar(label: "RAM", value: ramPercent)
+
+            if let insight = topInsight {
+                Divider()
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: insight.icon)
+                        .font(.caption)
+                        .foregroundStyle(insightColor(insight.colorName))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(insight.title)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(2)
+                        Text(insight.detail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
 
             Divider()
 
@@ -59,12 +81,9 @@ struct MenuBarView: View {
             .padding(.top, 4)
         }
         .padding(12)
-        // Sabit genişlik; yükseklik içeriğe göre (sabit 200 px içeriği taşırıyordu).
         .frame(width: 300)
         .fixedSize(horizontal: false, vertical: true)
     }
-
-    // MARK: - Kullanım çubuğu
 
     private func usageBar(label: String, value: Double) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -91,10 +110,18 @@ struct MenuBarView: View {
         }
     }
 
-    /// Çubuk rengi: yeşil normal, sarı > %70, kırmızı > %90.
     private func loadColor(_ value: Double) -> Color {
         if value > 90 { return .red }
         if value > 70 { return .yellow }
         return .green
+    }
+
+    private func insightColor(_ name: String) -> Color {
+        switch name {
+        case "red": return .red
+        case "yellow": return .orange
+        case "blue": return .blue
+        default: return .green
+        }
     }
 }

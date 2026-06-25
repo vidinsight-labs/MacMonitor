@@ -31,6 +31,7 @@ private struct RootView: View {
             .environmentObject(SystemMonitors.shared.systemInfo)
             .environmentObject(SystemMonitors.shared.security)
             .environmentObject(SystemMonitors.shared.notifications)
+            .environmentObject(SystemMonitors.shared.smartInsights)
             .onAppear {
                 WindowCoordinator.shared.open = { openWindow(id: "main") }
             }

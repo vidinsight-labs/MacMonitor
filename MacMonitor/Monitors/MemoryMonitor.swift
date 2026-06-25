@@ -132,45 +132,10 @@ final class MemoryMonitor: ObservableObject {
         return r == 0 ? value : 0
     }
 
-    // MARK: - Bellek temizleme (purge)
+    // MARK: - Bellek temizleme (sandbox'ta kullanılamaz)
 
-    /// `purge` komutunu yönetici yetkisiyle çalıştırır.
-    ///
-    /// GUI uygulamasında `sudo` bir TTY olmadan parola soramaz; bu yüzden komut
-    /// `osascript ... with administrator privileges` ile çalıştırılır — bu, macOS'un
-    /// standart yönetici parola penceresini gösterir. (Eski `AuthorizationExecuteWithPrivileges`
-    /// API'si kullanılmaz, çünkü kullanımdan kaldırılmıştır.)
     func purgeMemory() {
-        guard !isPurging else { return }
-        isPurging = true
-        purgeMessage = nil
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = ["-e", "do shell script \"/usr/sbin/purge\" with administrator privileges"]
-
-            let errPipe = Pipe()
-            process.standardError = errPipe
-
-            var message: String?
-            do {
-                try process.run()
-                process.waitUntilExit()
-                if process.terminationStatus != 0 {
-                    let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-                    let err = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    message = err.isEmpty ? "Temizleme başarısız oldu (kod \(process.terminationStatus))." : err
-                }
-            } catch {
-                message = error.localizedDescription
-            }
-
-            DispatchQueue.main.async {
-                self?.isPurging = false
-                self?.purgeMessage = message
-                self?.update()   // temizlik sonrası değerleri yenile
-            }
-        }
+        let avail = FeatureCapability.availability(for: .memoryPurge)
+        purgeMessage = avail.reason
     }
 }

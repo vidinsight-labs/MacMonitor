@@ -13,6 +13,9 @@ import IOKit
 /// Her 3 saniyede bir `Timer` ile güncellenir.
 final class FanMonitor: ObservableObject {
 
+    /// Sandbox'ta SMC erişimi (ilk açılışta ölçülür; FeatureCapability bunu kullanır).
+    static private(set) var smcAccessibleInSandbox = false
+
     // MARK: - Yayınlanan durum
 
     @Published private(set) var fans: [FanData] = []
@@ -46,6 +49,7 @@ final class FanMonitor: ObservableObject {
 
     init() {
         smcAvailable = openSMC()
+        Self.smcAccessibleInSandbox = smcAvailable
         start()
     }
 

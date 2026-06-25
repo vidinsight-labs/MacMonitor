@@ -21,14 +21,70 @@ struct SecurityView: View {
                                  title: summary.title, message: summary.message)
                 }
 
+                if monitor.scanDone && (!monitor.addedItems.isEmpty || !monitor.removedItems.isEmpty) {
+                    diffCard
+                }
+
                 disclaimerCard
 
                 scanCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // MARK: - Baseline diff
+
+    private var diffCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                sectionTitle(icon: "arrow.triangle.branch", title: t("Değişiklikler", "Changes"))
+                Spacer()
+                Button(t("Baseline Kaydet", "Save Baseline")) { monitor.saveAsBaseline() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            }
+
+            if !monitor.addedItems.isEmpty {
+                Text(t("Yeni öğeler (\(monitor.addedItems.count))", "New items (\(monitor.addedItems.count))"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                ForEach(monitor.addedItems) { item in
+                    diffRow(label: item.label, detail: item.program, badge: t("Yeni", "New"), color: .orange)
+                }
+            }
+
+            if !monitor.removedItems.isEmpty {
+                Text(t("Kaldırılan öğeler (\(monitor.removedItems.count))", "Removed items (\(monitor.removedItems.count))"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, monitor.addedItems.isEmpty ? 0 : 8)
+                ForEach(monitor.removedItems, id: \.self) { entry in
+                    diffRow(label: entry.label, detail: entry.program, badge: t("Kaldırıldı", "Removed"), color: .secondary)
+                }
+            }
+        }
+        .card()
+    }
+
+    private func diffRow(label: String, detail: String, badge: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(badge)
+                .font(.caption2.weight(.bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(color.opacity(0.2)))
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.callout.weight(.medium))
+                if !detail.isEmpty {
+                    Text(detail).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Dürüst uyarı
@@ -103,8 +159,18 @@ struct SecurityView: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.label)
-                    .font(.callout.weight(.semibold))
+                HStack(spacing: 6) {
+                    Text(item.label)
+                        .font(.callout.weight(.semibold))
+                    if monitor.change(for: item) == .added {
+                        Text(t("Yeni", "New"))
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.orange.opacity(0.2)))
+                            .foregroundStyle(.orange)
+                    }
+                }
 
                 HStack(spacing: 6) {
                     Text(signingText(item))
@@ -182,8 +248,8 @@ struct SecurityView: View {
     }
 }
 
-#Preview {
+#Preview("1280×800") {
     SecurityView()
         .environmentObject(SecurityMonitor())
-        .frame(width: 760, height: 760)
+        .previewLayout(width: 1280, height: 800, detailWidth: 1000)
 }

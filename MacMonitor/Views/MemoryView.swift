@@ -4,6 +4,7 @@ import SwiftUI
 struct MemoryView: View {
     @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: MemoryMonitor
+    @Environment(\.contentWidth) private var contentWidth
 
     private var data: MemoryData { monitor.memory }
 
@@ -32,8 +33,7 @@ struct MemoryView: View {
                 uptimeCard
                 manageCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -52,10 +52,10 @@ struct MemoryView: View {
     // MARK: - Ana kart (gösterge + özet)
 
     private var heroCard: some View {
-        HStack(spacing: 28) {
+        HeroMetricLayout(spacing: 28) {
             UsageGauge(value: usedPercent, color: pressureColor, caption: t("Kullanılan", "Used"))
                 .frame(width: 168, height: 168)
-
+        } summary: {
             VStack(alignment: .leading, spacing: 14) {
                 summaryRow(icon: "memorychip.fill", tint: .blue,
                            title: t("Kullanılan", "Used"), valueText: gb(data.used))
@@ -81,7 +81,6 @@ struct MemoryView: View {
                         .background(Capsule().fill(pressureColor.opacity(0.15)))
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .card()
     }
@@ -269,34 +268,28 @@ struct MemoryView: View {
     // MARK: - Yönetim kartı (temizle)
 
     private var manageCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let purgeAvail = FeatureCapability.availability(for: .memoryPurge)
+        return VStack(alignment: .leading, spacing: 12) {
             sectionTitle(icon: "wand.and.stars", title: t("Bellek Yönetimi", "Memory Management"))
 
-            Text(t("İnaktif (geri kazanılabilir) belleği boşaltır — `purge`. Yönetici parolası istenir.", "Frees inactive (reclaimable) memory — `purge`. Administrator password is required."))
+            Text(purgeAvail.reason)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Button {
                 monitor.purgeMemory()
             } label: {
-                HStack {
-                    if monitor.isPurging {
-                        ProgressView().controlSize(.small)
-                        Text(t("Temizleniyor…", "Cleaning…"))
-                    } else {
-                        Label(t("Belleği Temizle", "Free Memory"), systemImage: "trash")
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                Label(t("Belleği Temizle", "Free Memory"), systemImage: "trash")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(monitor.isPurging)
+            .disabled(!purgeAvail.available)
 
             if let message = monitor.purgeMessage {
-                Label(message, systemImage: "exclamationmark.triangle")
+                Label(message, systemImage: "info.circle")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
             }
         }
         .card()
@@ -344,8 +337,14 @@ private struct MemorySegment: Identifiable {
     var id: String { label }
 }
 
-#Preview {
+#Preview("720×520") {
     MemoryView()
         .environmentObject(MemoryMonitor())
-        .frame(width: 640, height: 820)
+        .previewLayout(width: 720, height: 520, detailWidth: 700)
+}
+
+#Preview("1280×800") {
+    MemoryView()
+        .environmentObject(MemoryMonitor())
+        .previewLayout(width: 1280, height: 800, detailWidth: 1000)
 }

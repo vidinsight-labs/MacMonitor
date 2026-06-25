@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 cpuMonitor: cpuMonitor,
                 memoryMonitor: memoryMonitor,
                 processMonitor: processMonitor,
+                smartInsights: SystemMonitors.shared.smartInsights,
                 onOpen: { [weak self] in
                     self?.popover.performClose(nil)
                     self?.openMainWindow()

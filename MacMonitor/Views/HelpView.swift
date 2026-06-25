@@ -107,8 +107,7 @@ struct HelpView: View {
                     ]
                 )
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }

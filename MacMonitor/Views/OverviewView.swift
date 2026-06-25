@@ -12,14 +12,14 @@ struct OverviewView: View {
     @EnvironmentObject private var systemInfo: SystemInfoMonitor
     @EnvironmentObject private var security: SecurityMonitor
     @EnvironmentObject private var notifications: NotificationManager
+    @EnvironmentObject private var smartInsights: SmartInsightsEngine
 
     // Kartlara tıklayınca sekme değiştirmek için (MainView ile aynı kalıcı anahtar).
     @AppStorage("selectedTab") private var selectedTabRaw = MainView.Tab.overview.rawValue
 
     @State private var healthCheckRun = false
 
-    // Sabit 4 sütun — pencere büyüse de yerleşim değişmez.
-    private let metricColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+    @Environment(\.contentWidth) private var contentWidth
 
     var body: some View {
         ScrollView {
@@ -35,7 +35,9 @@ struct OverviewView: View {
 
                 verdictCard
 
-                LazyVGrid(columns: metricColumns, spacing: 12) {
+                smartInsightsCard
+
+                LazyVGrid(columns: PageLayout.metricGridColumns(for: contentWidth), spacing: 12) {
                     MetricCard(icon: "cpu", title: t("İşlemci", "Processor"),
                                value: "%\(Int(cpuMonitor.totalUsage.rounded()))",
                                level: cpuLevel)
@@ -62,8 +64,7 @@ struct OverviewView: View {
 
                 notificationCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -92,6 +93,45 @@ struct OverviewView: View {
             Spacer(minLength: 0)
         }
         .card()
+    }
+
+    // MARK: - Akıllı öneriler (yerel kural motoru)
+
+    private var smartInsightsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(icon: "lightbulb.fill", title: t("Akıllı Öneriler", "Smart Insights"))
+
+            VStack(spacing: 0) {
+                ForEach(Array(smartInsights.insights.prefix(4).enumerated()), id: \.element.id) { index, insight in
+                    if index > 0 { Divider() }
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: insight.icon)
+                            .foregroundStyle(insightSwiftColor(insight.colorName))
+                            .frame(width: 22)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(insight.title)
+                                .font(.callout.weight(.semibold))
+                            Text(insight.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+        .card()
+    }
+
+    private func insightSwiftColor(_ name: String) -> Color {
+        switch name {
+        case "red": return .red
+        case "yellow": return .orange
+        case "blue": return .blue
+        default: return .green
+        }
     }
 
     // MARK: - Dikkat (suçlu uygulama + öneri) ya da "her şey yolunda"
@@ -558,7 +598,7 @@ private struct MetricCard: View {
     }
 }
 
-#Preview {
+#Preview("720×520") {
     OverviewView()
         .environmentObject(CPUMonitor())
         .environmentObject(MemoryMonitor())
@@ -567,5 +607,45 @@ private struct MetricCard: View {
         .environmentObject(SystemInfoMonitor())
         .environmentObject(SecurityMonitor())
         .environmentObject(SystemMonitors.shared.notifications)
-        .frame(width: 760, height: 760)
+        .environmentObject(SystemMonitors.shared.smartInsights)
+        .previewLayout(width: 720, height: 520, detailWidth: 700)
+}
+
+#Preview("960×640") {
+    OverviewView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .environmentObject(SystemInfoMonitor())
+        .environmentObject(SecurityMonitor())
+        .environmentObject(SystemMonitors.shared.notifications)
+        .environmentObject(SystemMonitors.shared.smartInsights)
+        .previewLayout(width: 960, height: 640)
+}
+
+#Preview("1280×800") {
+    OverviewView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .environmentObject(SystemInfoMonitor())
+        .environmentObject(SecurityMonitor())
+        .environmentObject(SystemMonitors.shared.notifications)
+        .environmentObject(SystemMonitors.shared.smartInsights)
+        .previewLayout(width: 1280, height: 800, detailWidth: 1000)
+}
+
+#Preview("1600×900") {
+    OverviewView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .environmentObject(SystemInfoMonitor())
+        .environmentObject(SecurityMonitor())
+        .environmentObject(SystemMonitors.shared.notifications)
+        .environmentObject(SystemMonitors.shared.smartInsights)
+        .previewLayout(width: 1600, height: 900, detailWidth: 1100)
 }

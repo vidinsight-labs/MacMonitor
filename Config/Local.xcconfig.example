@@ -1,0 +1,4 @@
+// Bireysel (Individual) Apple Developer Program Team ID'nizi yazın.
+// Xcode → Settings → Accounts → Individual hesabınız → Team ID
+// Şirket/organizasyon team ID'si değil, kendi Individual team'iniz olmalı.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID

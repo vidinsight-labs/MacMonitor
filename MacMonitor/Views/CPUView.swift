@@ -6,10 +6,7 @@ struct CPUView: View {
     @ObservedObject private var loc = Localizer.shared
     @EnvironmentObject private var monitor: CPUMonitor
     @EnvironmentObject private var loadEvents: LoadEventRecorder
-
-    // Sabit 4 sütun: pencere büyüse de yerleşim değişmez (8 çekirdek → 4+4).
-    // Kutular pencere genişledikçe esner; sütun sayısı sabit kalır.
-    private let coreColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+    @Environment(\.contentWidth) private var contentWidth
 
     var body: some View {
         ScrollView {
@@ -19,10 +16,10 @@ struct CPUView: View {
                 heroCard
                 coresCard
                 historyCard
+                LoadHistoryView()
                 eventsCard
             }
-            .padding(20)
-            .centeredPageContent()
+            .responsivePageLayout()
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -41,12 +38,12 @@ struct CPUView: View {
     // MARK: - Ana kart (gösterge + özet)
 
     private var heroCard: some View {
-        HStack(spacing: 28) {
+        HeroMetricLayout(spacing: 28) {
             UsageGauge(value: monitor.totalUsage,
                        color: cpuUsageColor(monitor.totalUsage),
                        caption: t("Toplam Kullanım", "Total Usage"))
                 .frame(width: 168, height: 168)
-
+        } summary: {
             VStack(alignment: .leading, spacing: 14) {
                 summaryRow(icon: "person.fill", tint: .blue,
                            title: t("Kullanıcı", "User"), value: avgUser)
@@ -57,7 +54,6 @@ struct CPUView: View {
                 summaryRow(icon: "arrow.up.to.line", tint: cpuUsageColor(peakCore),
                            title: t("En yüksek çekirdek", "Highest core"), value: peakCore)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .card()
     }
@@ -91,7 +87,7 @@ struct CPUView: View {
             if monitor.cores.isEmpty {
                 placeholder(t("Veri toplanıyor…", "Collecting data…"))
             } else {
-                LazyVGrid(columns: coreColumns, spacing: 12) {
+                LazyVGrid(columns: PageLayout.coreGridColumns(for: contentWidth), spacing: 12) {
                     ForEach(monitor.cores) { core in
                         CoreTile(core: core)
                     }
@@ -350,9 +346,16 @@ struct CoreTile: View {
     }
 }
 
-#Preview {
+#Preview("720×520") {
     CPUView()
         .environmentObject(CPUMonitor())
         .environmentObject(LoadEventRecorder(cpu: CPUMonitor(), process: ProcessMonitor()))
-        .frame(width: 640, height: 800)
+        .previewLayout(width: 720, height: 520, detailWidth: 700)
+}
+
+#Preview("1280×800") {
+    CPUView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(LoadEventRecorder(cpu: CPUMonitor(), process: ProcessMonitor()))
+        .previewLayout(width: 1280, height: 800, detailWidth: 1000)
 }

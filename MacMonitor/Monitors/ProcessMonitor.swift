@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import AppKit
 
 /// Çalışan process listesini toplar (libproc).
 ///
@@ -13,6 +14,12 @@ final class ProcessMonitor: ObservableObject {
 
     /// CPU'ya göre azalan sıralı tam liste (görünüm üst 20 ile sınırlar).
     @Published private(set) var processes: [ProcessData] = []
+
+    /// En az bir kez toplama tamamlandı mı (boş liste vs yükleniyor ayrımı).
+    @Published private(set) var hasCompletedUpdate = false
+
+    /// Sandbox'ta yalnızca kullanıcı uygulamaları listelenir; tam libproc listesi değil.
+    @Published private(set) var isLimitedList = false
 
     /// Zorla kapatma sonrası kullanıcıya gösterilecek geçici mesaj.
     @Published private(set) var actionMessage: String?
@@ -54,8 +61,7 @@ final class ProcessMonitor: ObservableObject {
         timer = nil
     }
 
-    /// Seçili süreçleri zorla sonlandırır (SIGKILL) ve sonucu kullanıcıya bildirir.
-    /// Başka kullanıcıya / sisteme ait süreçler yetki gerektirir; bu durumda başarısız olur.
+    /// Seçili süreçleri sonlandırır (sandbox: NSRunningApplication.terminate).
     func forceQuit(_ pids: Set<pid_t>) {
         guard !pids.isEmpty else { return }
 
@@ -63,22 +69,33 @@ final class ProcessMonitor: ObservableObject {
         var failed: [String] = []
 
         for pid in pids {
-            let name = processes.first(where: { $0.pid == pid })?.name ?? "PID \(pid)"
-            if kill(pid, SIGKILL) == 0 {
+            let proc = processes.first(where: { $0.pid == pid })
+            let name = proc?.name ?? "PID \(pid)"
+
+            if let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
+                if app.terminate() {
+                    succeeded += 1
+                } else {
+                    failed.append(name)
+                }
+            } else if kill(pid, SIGTERM) == 0 {
                 succeeded += 1
             } else {
-                // EPERM (yetki yok) veya ESRCH (zaten yok) → başarısız say.
                 failed.append(name)
             }
         }
 
         let message: String
         if failed.isEmpty {
-            message = succeeded == 1 ? "İşlem sonlandırıldı." : "\(succeeded) işlem sonlandırıldı."
+            message = succeeded == 1
+                ? t("İşlem sonlandırıldı.", "Process terminated.")
+                : t("\(succeeded) işlem sonlandırıldı.", "\(succeeded) processes terminated.")
         } else if succeeded == 0 {
-            message = "\(failed.joined(separator: ", ")) kapatılamadı — yönetici izni gerekebilir."
+            message = t("\(failed.joined(separator: ", ")) kapatılamadı — sistem süreçleri korunur.",
+                        "\(failed.joined(separator: ", ")) could not be closed — system processes are protected.")
         } else {
-            message = "\(succeeded) işlem kapatıldı; \(failed.joined(separator: ", ")) için yetki gerekiyor."
+            message = t("\(succeeded) işlem kapatıldı; \(failed.joined(separator: ", ")) için yetki gerekiyor.",
+                        "\(succeeded) closed; permission required for \(failed.joined(separator: ", ")).")
         }
         setActionMessage(message)
         update()
@@ -103,36 +120,54 @@ final class ProcessMonitor: ObservableObject {
             let list = self.collect()
             DispatchQueue.main.async {
                 self.processes = list
+                self.hasCompletedUpdate = true
+                self.isLimitedList = Self.isSandboxed
             }
         }
     }
 
     private func collect() -> [ProcessData] {
-        let pids = Self.allPIDs()
+        let runningApps = Self.runningApplicationsByPID()
+        var pidSet = Set(Self.allPIDs().filter { $0 > 0 })
+        if Self.isSandboxed || pidSet.isEmpty {
+            pidSet.formUnion(runningApps.keys)
+        }
+
         let now = ProcessInfo.processInfo.systemUptime
         let elapsed = previousUptime > 0 ? now - previousUptime : interval
 
         var newPrev: [pid_t: UInt64] = [:]
         var result: [ProcessData] = []
-        result.reserveCapacity(pids.count)
+        result.reserveCapacity(pidSet.count)
 
-        for pid in pids where pid > 0 {
-            // Okuyamadığımız süreçleri (yetki yok / yok olmuş) atla.
-            guard let info = Self.taskInfo(pid) else { continue }
+        for pid in pidSet {
+            let task = Self.taskInfo(pid)
+            let app = runningApps[pid]
 
-            let cpuTime = info.pti_total_user + info.pti_total_system   // ns
-            newPrev[pid] = cpuTime
+            if task == nil && app == nil && !Self.canResolveName(pid) {
+                continue
+            }
+
+            let cpuTime = task.map { $0.pti_total_user + $0.pti_total_system } ?? 0
+            if cpuTime > 0 { newPrev[pid] = cpuTime }
 
             var cpuPercent = 0.0
-            if let prev = previousCPU[pid], elapsed > 0 {
+            if let prev = previousCPU[pid], elapsed > 0, cpuTime > 0 {
                 let delta = cpuTime >= prev ? cpuTime - prev : 0
                 cpuPercent = Double(delta) / 1_000_000_000.0 / elapsed * 100.0
             }
 
-            // Ad/yol/kullanıcı sabittir → ilk görüşte çöz, sonra önbellekten al.
             let info3: (name: String, path: String, user: String)
             if let cached = infoCache[pid] {
                 info3 = cached
+            } else if let app {
+                let resolved = (
+                    name: app.localizedName ?? app.bundleIdentifier ?? "PID \(pid)",
+                    path: app.bundleURL?.path ?? "",
+                    user: NSUserName()
+                )
+                infoCache[pid] = resolved
+                info3 = resolved
             } else {
                 let (name, path) = Self.nameAndPath(pid)
                 let resolved = (name: name, path: path, user: username(for: pid))
@@ -143,17 +178,39 @@ final class ProcessMonitor: ObservableObject {
             result.append(ProcessData(pid: pid,
                                       name: info3.name,
                                       cpuUsage: cpuPercent,
-                                      memoryUsage: info.pti_resident_size,
+                                      memoryUsage: task?.pti_resident_size ?? 0,
                                       user: info3.user,
                                       path: info3.path))
         }
 
         previousCPU = newPrev
         previousUptime = now
-        infoCache = infoCache.filter { newPrev[$0.key] != nil }   // ölmüş süreçleri at
+        infoCache = infoCache.filter { pidSet.contains($0.key) }
 
         result.sort { $0.cpuUsage > $1.cpuUsage }
         return result
+    }
+
+    // MARK: - Sandbox / NSWorkspace
+
+    private static var isSandboxed: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    private static func runningApplicationsByPID() -> [pid_t: NSRunningApplication] {
+        Dictionary(
+            uniqueKeysWithValues: NSWorkspace.shared.runningApplications
+                .filter { !$0.isTerminated }
+                .map { ($0.processIdentifier, $0) }
+        )
+    }
+
+    /// proc_name ile en azından ad çözülebiliyor mu?
+    private static func canResolveName(_ pid: pid_t) -> Bool {
+        var nameBuffer = [CChar](repeating: 0, count: 256)
+        guard proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)) == 0 else { return false }
+        let name = String(cString: nameBuffer)
+        return !name.isEmpty
     }
 
     // MARK: - libproc yardımcıları

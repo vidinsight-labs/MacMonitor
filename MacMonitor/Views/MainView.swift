@@ -12,6 +12,9 @@ struct MainView: View {
     // Seçili sekme kalıcı (yeniden açılışta hatırlanır).
     @AppStorage("selectedTab") private var selectedTabRaw = Tab.overview.rawValue
 
+    @State private var detailWidth: CGFloat = 800
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     private var currentTab: Tab { Tab(rawValue: selectedTabRaw) ?? .overview }
     private var selectionBinding: Binding<Tab?> {
         Binding(get: { currentTab },
@@ -64,7 +67,7 @@ struct MainView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(Tab.allCases, id: \.self, selection: selectionBinding) { tab in
                 Label {
                     Text(tab.title)
@@ -96,9 +99,18 @@ struct MainView: View {
                 Divider()
                 StatusBarView()
             }
+            .reportDetailWidth()
             .navigationTitle(currentTab.title)
         }
         .frame(minWidth: 720, minHeight: 520)
+        .reportWindowWidth()
+        .environment(\.contentWidth, detailWidth)
+        .onPreferenceChange(WindowWidthKey.self) { windowWidth in
+            columnVisibility = windowWidth < PageLayout.sidebarCollapseThreshold ? .detailOnly : .all
+        }
+        .onPreferenceChange(DetailWidthKey.self) { width in
+            if width > 1 { detailWidth = width }
+        }
         .background { tabShortcuts.opacity(0) }   // ⌘1…⌘8 ile sekme geçişi
     }
 
@@ -138,21 +150,27 @@ struct MainView: View {
 /// yeniden çizilir (ağır detay görünümü değil).
 private struct StatusBarView: View {
     @ObservedObject private var loc = Localizer.shared
+    @Environment(\.contentWidth) private var contentWidth
     @EnvironmentObject private var cpuMonitor: CPUMonitor
     @EnvironmentObject private var memoryMonitor: MemoryMonitor
 
+    private var isCompact: Bool { ContentWidthTier(width: contentWidth) == .compact }
+
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: isCompact ? 8 : 16) {
             Label(uptimeString, systemImage: "clock.arrow.circlepath")
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .help(t("Cihazın açık kalma süresi", "Time the device has been on"))
 
-            Spacer()
+            if !isCompact { Spacer() }
 
             HStack(spacing: 6) {
                 Circle()
                     .fill(health.color)
                     .frame(width: 8, height: 8)
                 Text("\(t("Sistem", "System")): \(health.label)")
+                    .lineLimit(1)
             }
             .help(t("Genel sistem yükü (CPU ve RAM kullanımının yükseği)",
                     "Overall system load (higher of CPU and RAM usage)"))
@@ -164,7 +182,7 @@ private struct StatusBarView: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, isCompact ? 8 : 12)
         .padding(.vertical, 6)
         .background(.bar)
     }
@@ -209,10 +227,38 @@ private struct StatusClock: View {
     }
 }
 
-#Preview {
+#Preview("720×520") {
     MainView()
         .environmentObject(CPUMonitor())
         .environmentObject(MemoryMonitor())
         .environmentObject(FanMonitor())
         .environmentObject(ProcessMonitor())
+        .frame(width: 720, height: 520)
+}
+
+#Preview("960×640") {
+    MainView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .frame(width: 960, height: 640)
+}
+
+#Preview("1280×800") {
+    MainView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .frame(width: 1280, height: 800)
+}
+
+#Preview("1600×900") {
+    MainView()
+        .environmentObject(CPUMonitor())
+        .environmentObject(MemoryMonitor())
+        .environmentObject(FanMonitor())
+        .environmentObject(ProcessMonitor())
+        .frame(width: 1600, height: 900)
 }

@@ -1,35 +1,7 @@
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
+# App Store imzalama — kişisel Team ID (repoya eklenmez)
+Config/Local.xcconfig
 
-# Xcode kullanıcı verileri / türetilmiş veriler
-xcuserdata/
-*.xcuserstate
-DerivedData/
-*.xcscmblueprint
-*.xccheckout
-
-# XcodeGen tarafından ÜRETİLEN proje — kaynak project.yml'dir.
-# Klonladıktan sonra:  xcodegen generate
-MacMonitor.xcodeproj/
-
-# Derleme çıktıları
-build/
-*.o
-*.swiftmodule
-*.dSYM/
-
-# Dağıtım çıktıları
-*.dmg
-dmg-staging/
-
-# Swift Package Manager
-.swiftpm/
-.build/
-
-# Claude Code yerel ayarları (kişisel)
-.claude/settings.local.json
-
-# Çeşitli
-*.log
+# Archive / export çıktıları
+build/MacMonitor.xcarchive
+build/appstore-export/
+.derivedData/

@@ -3,46 +3,97 @@ import Combine
 
 /// Bir çalıştırılabilir dosyanın kod imzası durumu.
 enum Signing {
-    case apple                 // Apple tarafından imzalı (sistem bileşeni)
-    case developer(String)     // Tanımlı geliştirici (Developer ID) — imzalayan adı
-    case unsigned              // İmzasız veya ad-hoc (kendi kendine imzalı)
-    case unknown               // Dosya yok / imza okunamadı
+    case apple
+    case developer(String)
+    case unsigned
+    case unknown
 }
 
 /// Açılışta veya arka planda kalıcı olarak çalışan bir öğe (LaunchAgent/Daemon).
 struct SecurityItem: Identifiable {
     let id = UUID()
-    let label: String              // launchd Label (yoksa dosya adı)
-    let program: String            // çalıştırılabilir yol
-    let source: String             // nereden geldiği (kullanıcı/sistem)
+    let label: String
+    let program: String
+    let source: String
     let signing: Signing
-    let suspiciousLocation: Bool   // /tmp, gizli klasör vb.
+    let suspiciousLocation: Bool
 }
 
-/// "Güvenlik Bakışı" — kalıcılık öğelerini (LaunchAgents/Daemons) bulur ve her birinin
-/// kod imzası durumunu çıkarır. Bu bir **antivirüs değildir**; yalnızca açılışta sessizce
-/// çalışan şeyleri ve imza durumlarını şeffaf biçimde gösterir (karar kullanıcıda).
-///
-/// Ağır olduğundan (codesign çağrıları) sürekli çalışmaz; yalnızca `scan()` ile bir kez.
+/// Güvenlik taraması baseline kaydı (diff için).
+struct SecurityBaselineEntry: Codable, Hashable {
+    let label: String
+    let program: String
+    let source: String
+}
+
+enum SecurityItemChange: String {
+    case added
+    case removed
+    case unchanged
+}
+
+/// "Güvenlik Bakışı" — kalıcılık öğelerini bulur, imza durumunu Security.framework ile çıkarır.
+/// İlk taramadan sonra baseline kaydedilir; sonraki taramalarda diff üretilir.
 final class SecurityMonitor: ObservableObject {
     @Published private(set) var items: [SecurityItem] = []
     @Published private(set) var isScanning = false
     @Published private(set) var scanDone = false
+    @Published private(set) var addedItems: [SecurityItem] = []
+    @Published private(set) var removedItems: [SecurityBaselineEntry] = []
+    @Published private(set) var hasBaseline = false
+
+    private let baselineURL: URL
+
+    init() {
+        baselineURL = Self.makeBaselineURL()
+        hasBaseline = FileManager.default.fileExists(atPath: baselineURL.path)
+    }
 
     func scan() {
         guard !isScanning else { return }
         isScanning = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
             let found = Self.gather()
+            let previousBaseline = Self.loadBaseline(from: self.baselineURL)
+            let currentKeys = Set(found.map(Self.baselineEntry(for:)))
+            let previousKeys = Set(previousBaseline)
+
+            let added = found.filter { !previousKeys.contains(Self.baselineEntry(for: $0)) }
+            let removed = previousBaseline.filter { !currentKeys.contains($0) }
+
+            if previousBaseline.isEmpty {
+                Self.saveBaseline(found.map(Self.baselineEntry(for:)), to: self.baselineURL)
+            }
+
             DispatchQueue.main.async {
-                self?.items = found
-                self?.isScanning = false
-                self?.scanDone = true
+                self.items = found
+                self.addedItems = previousBaseline.isEmpty ? [] : added
+                self.removedItems = previousBaseline.isEmpty ? [] : removed
+                self.hasBaseline = FileManager.default.fileExists(atPath: self.baselineURL.path)
+                self.isScanning = false
+                self.scanDone = true
             }
         }
     }
 
-    /// İşaretlenmesi gereken (imzasız / tuhaf konum) öğe sayısı.
+    /// Mevcut taramayı yeni baseline olarak kaydet (diff sıfırlanır).
+    func saveAsBaseline() {
+        let entries = items.map(Self.baselineEntry(for:))
+        Self.saveBaseline(entries, to: baselineURL)
+        addedItems = []
+        removedItems = []
+        hasBaseline = true
+    }
+
+    func change(for item: SecurityItem) -> SecurityItemChange {
+        let key = Self.baselineEntry(for: item)
+        if addedItems.contains(where: { Self.baselineEntry(for: $0) == key }) {
+            return .added
+        }
+        return .unchanged
+    }
+
     var flaggedCount: Int {
         items.filter(Self.isFlagged).count
     }
@@ -51,7 +102,6 @@ final class SecurityMonitor: ObservableObject {
 
     private static func gather() -> [SecurityItem] {
         let home = NSHomeDirectory()
-        // Apple'ın /System/Library altındaki öğeleri kasıtlı olarak dışarıda — onlar sistemin parçası.
         let dirs: [(path: String, source: String)] = [
             (home + "/Library/LaunchAgents", "Kullanıcı · LaunchAgent"),
             ("/Library/LaunchAgents",        "Sistem geneli · LaunchAgent"),
@@ -70,7 +120,7 @@ final class SecurityMonitor: ObservableObject {
                 let label = (plist["Label"] as? String) ?? (name as NSString).deletingPathExtension
                 let program = executablePath(from: plist) ?? ""
 
-                let signing = program.isEmpty ? Signing.unknown : signingStatus(of: program)
+                let signing = program.isEmpty ? Signing.unknown : CodeSigningHelper.signingStatus(of: program)
                 let suspicious = program.isEmpty ? false : isSuspiciousLocation(program)
 
                 result.append(SecurityItem(label: label, program: program,
@@ -79,7 +129,6 @@ final class SecurityMonitor: ObservableObject {
             }
         }
 
-        // İşaretliler (riskli) üste; sonra ada göre.
         return result.sorted { lhs, rhs in
             if isFlagged(lhs) != isFlagged(rhs) { return isFlagged(lhs) }
             return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
@@ -90,77 +139,51 @@ final class SecurityMonitor: ObservableObject {
         switch item.signing {
         case .apple, .developer: return item.suspiciousLocation
         case .unsigned:          return true
-        case .unknown:           return false   // imza okunamadı → kesin değil; yanlış pozitif olmasın
+        case .unknown:           return false
         }
     }
 
-    /// XML veya binary plist'i sözlüğe okur.
+    private static func baselineEntry(for item: SecurityItem) -> SecurityBaselineEntry {
+        SecurityBaselineEntry(label: item.label, program: item.program, source: item.source)
+    }
+
+    private static func makeBaselineURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = base.appendingPathComponent("MacMonitor", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("security_baseline.json")
+    }
+
+    private static func loadBaseline(from url: URL) -> [SecurityBaselineEntry] {
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode([SecurityBaselineEntry].self, from: data)
+        else { return [] }
+        return decoded
+    }
+
+    private static func saveBaseline(_ entries: [SecurityBaselineEntry], to url: URL) {
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
     private static func readPlist(_ path: String) -> [String: Any]? {
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
     }
 
-    /// launchd plist'inden çalıştırılabilir yolu çıkarır (Program veya ProgramArguments[0]).
     private static func executablePath(from plist: [String: Any]) -> String? {
         if let program = plist["Program"] as? String { return program }
         if let args = plist["ProgramArguments"] as? [String], let first = args.first { return first }
         return nil
     }
 
-    /// `codesign -dvvv` çıktısından imza durumunu çıkarır.
-    private static func signingStatus(of path: String) -> Signing {
-        guard FileManager.default.fileExists(atPath: path) else { return .unknown }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["-dvvv", path]
-        let errPipe = Pipe()
-        process.standardError = errPipe     // codesign ayrıntıları stderr'e yazar
-        process.standardOutput = Pipe()
-        do {
-            try process.run()
-            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            let out = String(data: data, encoding: .utf8) ?? ""
-
-            if out.contains("not signed at all") || out.contains("code object is not signed") {
-                return .unsigned
-            }
-            if out.contains("Signature=adhoc") {
-                return .unsigned   // ad-hoc imza ≈ imzasız (tanımlı bir geliştirici yok)
-            }
-
-            // Tüm "Authority=" satırlarını topla (zincir: leaf → ara → kök).
-            let authorities = out.split(separator: "\n")
-                .filter { $0.hasPrefix("Authority=") }
-                .map { String($0.dropFirst("Authority=".count)) }
-            guard let leaf = authorities.first else { return .unknown }
-
-            // Apple sistem bileşeni: imza zincirinde Apple geçer ("Software Signing" leaf'i de Apple'ındır).
-            if authorities.contains(where: { $0.contains("Apple") }) || leaf == "Software Signing" {
-                return .apple
-            }
-            if leaf.hasPrefix("Developer ID Application: ") {
-                let rest = leaf.dropFirst("Developer ID Application: ".count)
-                // "Şirket Adı (TEAMID)" → "Şirket Adı"
-                let name = rest.components(separatedBy: " (").first ?? String(rest)
-                return .developer(name)
-            }
-            // Mac App Store vb. → geliştirici adıyla göster.
-            return .developer(leaf)
-        } catch {
-            return .unknown
-        }
-    }
-
-    /// Çalıştırılabilirin "tuhaf" bir konumda olup olmadığı (zayıf bir şüphe sinyali).
     private static func isSuspiciousLocation(_ path: String) -> Bool {
         let lower = path.lowercased()
         let suspicious = ["/tmp/", "/private/tmp/", "/private/var/folders/",
                           "/users/shared/", "/downloads/", "/.hidden"]
         if suspicious.contains(where: { lower.contains($0) }) { return true }
 
-        // Gizli klasör bileşeni (. ile başlayan) — ev dizini kökü hariç.
         let comps = (path as NSString).pathComponents
         if comps.dropFirst().contains(where: { $0.hasPrefix(".") && $0.count > 1 && $0 != ".." }) {
             return true

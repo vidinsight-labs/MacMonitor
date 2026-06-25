@@ -11,21 +11,19 @@ struct HardwareComponent: Identifiable {
     let detail: String
 }
 
-/// Pil sağlığı (yalnızca dizüstülerde anlamlı). Apple'ın Ayarlar'da gösterdiğiyle aynı değerler.
+/// Pil sağlığı (yalnızca dizüstülerde anlamlı).
 struct BatteryHealth {
     var present = false
     var cycleCount: Int?
-    var maxCapacityPercent: Int?   // ör. 92
-    var condition: String?         // "Good" / "Fair" / "Service Recommended" ...
+    var maxCapacityPercent: Int?
+    var condition: String?
 }
 
-/// "Yer Aç" satırında önerilen eylem.
 enum DiskAction {
-    case emptyTrash   // Çöp kutusunu boşalt
-    case reveal       // Klasörü Finder'da aç
+    case emptyTrash
+    case reveal
 }
 
-/// Diskte yer kaplayan / boşaltılabilir bir konum.
 struct DiskItem: Identifiable {
     let id = UUID()
     let icon: String
@@ -35,25 +33,19 @@ struct DiskItem: Identifiable {
     let action: DiskAction
 }
 
-/// Sistem durumu: güç/termal/disk (canlı, ucuz) + donanım envanteri (butonla, ağır).
-///
-/// - Termal durum, düşük güç modu, pil ve disk: ucuz okumalar; 5 sn'lik hafif timer +
-///   sistem bildirimleriyle güncellenir.
-/// - Donanım bileşenleri: `system_profiler` yavaş olduğundan **sürekli çalışmaz**;
-///   yalnızca `loadHardware()` (kullanıcı butonu) ile arka planda bir kez alınır.
+/// Sistem durumu: güç/termal/disk (canlı) + donanım envanteri (sysctl/IOKit, sandbox uyumlu).
 final class SystemInfoMonitor: ObservableObject {
 
-    // MARK: - Canlı (ucuz) durum
+    // MARK: - Canlı durum
 
     @Published private(set) var thermalState: ProcessInfo.ThermalState = .nominal
     @Published private(set) var lowPowerMode = false
-    @Published private(set) var batteryLevel: Int?       // % (pil yoksa nil)
+    @Published private(set) var batteryLevel: Int?
     @Published private(set) var batteryCharging = false
     @Published private(set) var powerSource = "Bilinmiyor"
     @Published private(set) var diskFree: Int64 = 0
     @Published private(set) var diskTotal: Int64 = 0
 
-    /// Disk doluluk yüzdesi (tek kaynak; Genel Bakış, Sistem ve bildirimler bunu kullanır).
     var diskUsedPercent: Double {
         guard diskTotal > 0 else { return 0 }
         return Double(diskTotal - diskFree) / Double(diskTotal) * 100
@@ -65,14 +57,12 @@ final class SystemInfoMonitor: ObservableObject {
     @Published private(set) var isLoadingHardware = false
     @Published private(set) var hardwareLoaded = false
 
-    // MARK: - Yer Aç (disk kullanımı, butonla)
+    // MARK: - Yer Aç
 
     @Published private(set) var diskItems: [DiskItem] = []
     @Published private(set) var isScanningDisk = false
     @Published private(set) var diskScanDone = false
-    @Published var spaceMessage: String?     // çöp boşaltma vb. geri bildirim
-
-    // MARK: - Pil sağlığı (yavaş değişir → bir kez yüklenir)
+    @Published var spaceMessage: String?
 
     @Published private(set) var batteryHealth = BatteryHealth()
 
@@ -82,7 +72,6 @@ final class SystemInfoMonitor: ObservableObject {
         refreshLive()
         loadBatteryHealth()
 
-        // Termal/güç değişiminde anında güncelle (yoklama yapmaz).
         NotificationCenter.default.addObserver(
             self, selector: #selector(refreshLive),
             name: ProcessInfo.thermalStateDidChangeNotification, object: nil)
@@ -90,7 +79,6 @@ final class SystemInfoMonitor: ObservableObject {
             self, selector: #selector(refreshLive),
             name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
 
-        // Pil/disk gibi yavaş değişen değerler için hafif timer.
         let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.refreshLive()
         }
@@ -102,8 +90,6 @@ final class SystemInfoMonitor: ObservableObject {
         timer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
-
-    // MARK: - Canlı okuma
 
     @objc private func refreshLive() {
         let info = ProcessInfo.processInfo
@@ -152,7 +138,7 @@ final class SystemInfoMonitor: ObservableObject {
         return (free, total)
     }
 
-    // MARK: - Donanım envanteri (ağır, butonla)
+    // MARK: - Donanım envanteri (sysctl + IOKit, sandbox uyumlu)
 
     func loadHardware() {
         guard !isLoadingHardware else { return }
@@ -170,97 +156,67 @@ final class SystemInfoMonitor: ObservableObject {
 
     private static func gatherHardware() -> [HardwareComponent] {
         var comps: [HardwareComponent] = []
+        let info = ProcessInfo.processInfo
         comps.append(HardwareComponent(icon: "applelogo", title: "macOS",
-                                       detail: ProcessInfo.processInfo.operatingSystemVersionString))
+                                       detail: info.operatingSystemVersionString))
 
-        guard let json = runSystemProfiler(
-            ["SPHardwareDataType", "SPNVMeDataType", "SPAirPortDataType", "SPBluetoothDataType"]
-        ) else { return comps }
-
-        // Donanım genel
-        if let hw = (json["SPHardwareDataType"] as? [[String: Any]])?.first {
-            let model = ["machine_name", "machine_model", "model_number"]
-                .compactMap { hw[$0] as? String }.joined(separator: " · ")
-            if !model.isEmpty {
-                comps.append(.init(icon: "laptopcomputer", title: "Model", detail: model))
-            }
-            if let serial = hw["serial_number"] as? String {
-                comps.append(.init(icon: "number", title: "Seri No", detail: serial))
-            }
-            if let chip = hw["chip_type"] as? String {
-                let mem = hw["physical_memory"] as? String ?? ""
-                comps.append(.init(icon: "cpu", title: "Çip", detail: "\(chip) · \(mem)"))
-            }
-            if let boot = hw["boot_rom_version"] as? String {
-                comps.append(.init(icon: "memorychip", title: "Boot ROM", detail: boot))
-            }
+        if let model = sysctlString("hw.model") {
+            comps.append(.init(icon: "laptopcomputer", title: "Model", detail: model))
         }
-
-        // Depolama (SSD)
-        if let item = ((json["SPNVMeDataType"] as? [[String: Any]])?.first?["_items"] as? [[String: Any]])?.first {
-            let model = (item["device_model"] as? String) ?? (item["_name"] as? String) ?? "SSD"
-            let parts = [item["size"] as? String,
-                         (item["device_revision"] as? String).map { "FW \($0)" },
-                         (item["smart_status"] as? String).map { "SMART: \($0)" }]
-                .compactMap { $0 }
-            comps.append(.init(icon: "internaldrive", title: "Depolama (SSD)",
-                               detail: ([model] + parts).joined(separator: " · ")))
+        if let brand = sysctlString("machdep.cpu.brand_string"), !brand.isEmpty {
+            comps.append(.init(icon: "cpu", title: "İşlemci", detail: brand))
         }
-
-        // Wi-Fi modülü
-        if let itf = ((json["SPAirPortDataType"] as? [[String: Any]])?.first?["spairport_airport_interfaces"] as? [[String: Any]])?.first {
-            let type = (itf["spairport_wireless_card_type"] as? String) ?? "Wi-Fi"
-            let fw = itf["spairport_wireless_firmware_version"] as? String
-            comps.append(.init(icon: "wifi", title: "Wi-Fi Modülü",
-                               detail: fw.map { "\(type) · FW \($0)" } ?? type))
+        let memGB = Double(sysctlUInt64("hw.memsize")) / 1_073_741_824
+        if memGB > 0 {
+            comps.append(.init(icon: "memorychip", title: "Bellek",
+                               detail: String(format: "%.0f GB RAM", memGB)))
         }
-
-        // Bluetooth
-        if let ctl = (json["SPBluetoothDataType"] as? [[String: Any]])?.first?["controller_properties"] as? [String: Any] {
-            let chip = (ctl["controller_chipset"] as? String) ?? "Bluetooth"
-            let parts = [(ctl["controller_firmwareVersion"] as? String).map { "FW \($0)" },
-                         ctl["controller_transport"] as? String].compactMap { $0 }
-            comps.append(.init(icon: "antenna.radiowaves.left.and.right", title: "Bluetooth",
-                               detail: ([chip] + parts).joined(separator: " · ")))
+        let cores = sysctlInt("hw.logicalcpu")
+        if cores > 0 {
+            comps.append(.init(icon: "square.grid.3x3.fill", title: "Çekirdek",
+                               detail: "\(cores) mantıksal çekirdek"))
+        }
+        if let machine = ioRegistryString("IOPlatformExpertDevice", key: "model") {
+            comps.append(.init(icon: "macbook.gen2", title: "Donanım", detail: machine))
+        }
+        if let serial = ioRegistryString("IOPlatformExpertDevice", key: "IOPlatformSerialNumber") {
+            comps.append(.init(icon: "number", title: "Seri No", detail: serial))
         }
 
         return comps
     }
 
-    // MARK: - Pil sağlığı
-
-    /// Pil sağlığını arka planda okur (yavaş değiştiği için sürekli değil).
     func loadBatteryHealth() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let health = Self.readBatteryHealth()
+            let health = Self.readBatteryHealthFromIOKit()
             DispatchQueue.main.async { self?.batteryHealth = health }
         }
     }
 
-    private static func readBatteryHealth() -> BatteryHealth {
-        guard let json = runSystemProfiler(["SPPowerDataType"]),
-              let items = json["SPPowerDataType"] as? [[String: Any]]
+    private static func readBatteryHealthFromIOKit() -> BatteryHealth {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
         else { return BatteryHealth() }
 
-        for item in items {
-            guard let info = item["sppower_battery_health_info"] as? [String: Any] else { continue }
+        for src in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, src)?.takeUnretainedValue() as? [String: Any]
+            else { continue }
+            guard desc[kIOPSIsPresentKey] as? Bool == true else { continue }
+
             var health = BatteryHealth()
             health.present = true
-            health.cycleCount = info["sppower_battery_cycle_count"] as? Int
-            health.condition = info["sppower_battery_health"] as? String
-            if let cap = info["sppower_battery_health_maximum_capacity"] as? String {
-                // "%92" / "92%" → 92. İlk rakam grubunu al (gömülü başka rakam varsa bozulmasın).
-                let digits = cap.drop(while: { !$0.isNumber }).prefix(while: { $0.isNumber })
-                health.maxCapacityPercent = Int(digits)
+            if let cycles = desc["CycleCount"] as? Int { health.cycleCount = cycles }
+            if let max = desc["MaxCapacity"] as? Int, let design = desc["DesignCapacity"] as? Int, design > 0 {
+                health.maxCapacityPercent = Int(Double(max) / Double(design) * 100)
             }
+            if let condition = desc["Condition"] as? String { health.condition = condition }
             return health
         }
         return BatteryHealth()
     }
 
-    // MARK: - Yer Aç: disk kullanımı (ağır, butonla)
+    // MARK: - Yer Aç (FileManager, sandbox erişilebilir konumlar)
 
-    /// Yer kaplayan / boşaltılabilir konumların boyutlarını arka planda hesaplar.
     func scanDiskUsage() {
         guard !isScanningDisk else { return }
         isScanningDisk = true
@@ -276,86 +232,79 @@ final class SystemInfoMonitor: ObservableObject {
 
     private static func gatherDiskItems() -> [DiskItem] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        // (ikon, başlık, yol, eylem)
         let specs: [(String, String, String, DiskAction)] = [
-            ("trash",                "Çöp Kutusu",        home + "/.Trash",          .emptyTrash),
             ("arrow.down.circle",    "İndirilenler",      home + "/Downloads",       .reveal),
             ("menubar.dock.rectangle", "Masaüstü",        home + "/Desktop",         .reveal),
             ("doc.on.doc",           "Belgeler",          home + "/Documents",       .reveal),
-            ("square.grid.2x2",      "Uygulamalar",       "/Applications",           .reveal),
             ("internaldrive",        "Önbellek (Cache)",  home + "/Library/Caches",  .reveal),
         ]
 
         var items: [DiskItem] = []
         for spec in specs {
             guard FileManager.default.fileExists(atPath: spec.2),
-                  let bytes = duBytes(spec.2), bytes > 0 else { continue }
+                  let bytes = folderSize(spec.2), bytes > 0 else { continue }
             items.append(DiskItem(icon: spec.0, title: spec.1, path: spec.2,
                                   bytes: bytes, action: spec.3))
         }
         return items.sorted { $0.bytes > $1.bytes }
     }
 
-    /// `du -sk` ile bir klasörün toplam boyutu (byte). İzin engellenirse kısmi/nil döner.
-    private static func duBytes(_ path: String) -> Int64? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
-        process.arguments = ["-sk", path]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()   // "Operation not permitted" gürültüsünü yut
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let out = String(data: data, encoding: .utf8),
-                  let kbStr = out.split(separator: "\t").first?.trimmingCharacters(in: .whitespaces),
-                  let kb = Int64(kbStr)
-            else { return nil }
-            return kb * 1024
-        } catch {
-            return nil
-        }
-    }
+    private static func folderSize(_ path: String) -> Int64? {
+        let url = URL(fileURLWithPath: path)
+        guard let enumerator = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]
+        ) else { return nil }
 
-    /// Çöp kutusunu boşaltır (Finder üzerinden — kullanıcı dosyalarına dokunmaz).
-    func emptyTrash() {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = ["-e", "tell application \"Finder\" to empty the trash"]
-            process.standardError = Pipe()
-            let ok: Bool
-            do { try process.run(); process.waitUntilExit(); ok = process.terminationStatus == 0 }
-            catch { ok = false }
-            DispatchQueue.main.async {
-                self?.spaceMessage = ok ? "Çöp kutusu boşaltıldı."
-                                        : "Çöp boşaltılamadı (Finder izni gerekebilir)."
-                self?.scanDiskUsage()   // boyutları tazele
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                total += Int64(size)
             }
         }
+        return total > 0 ? total : nil
     }
 
-    /// Bir klasörü Finder'da gösterir (hiçbir şey silmez).
+    func emptyTrash() {
+        let avail = FeatureCapability.availability(for: .emptyTrash)
+        spaceMessage = avail.reason
+    }
+
     func reveal(_ path: String) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
-    private static func runSystemProfiler(_ types: [String]) -> [String: Any]? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-        process.arguments = ["-json"] + types
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+    // MARK: - sysctl / IOKit yardımcıları
 
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        } catch {
-            return nil
+    private static func sysctlString(_ name: String) -> String? {
+        var size: size_t = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    private static func sysctlUInt64(_ name: String) -> UInt64 {
+        var value: UInt64 = 0
+        var size = MemoryLayout<UInt64>.size
+        guard sysctlbyname(name, &value, &size, nil, 0) == 0 else { return 0 }
+        return value
+    }
+
+    private static func sysctlInt(_ name: String) -> Int {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname(name, &value, &size, nil, 0) == 0 else { return 0 }
+        return Int(value)
+    }
+
+    private static func ioRegistryString(_ plane: String, key: String) -> String? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching(plane))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        if let value = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? String {
+            return value
         }
+        return nil
     }
 }
