@@ -10,6 +10,8 @@ import Combine
 /// - **Son 1 ay** saklanır; daha eski kayıtlar açılışta ve her yeni olayda temizlenir.
 final class LoadEventRecorder: ObservableObject {
     @Published private(set) var events: [LoadEvent] = []
+    /// CPU hâlâ eşik üstündeyse true — ilk listedeki olay "devam ediyor" sayılır.
+    @Published private(set) var hasActiveHighLoadEvent = false
 
     /// Riskli bölge eşiği (% toplam CPU).
     let threshold: Double = 80
@@ -21,7 +23,11 @@ final class LoadEventRecorder: ObservableObject {
     private let culpritCount = 3
 
     private var inHighLoad = false
-    private var cancellable: AnyCancellable?
+    private var activeSampleCount = 0
+    private var activeCpuSum = 0.0
+    /// Olay boyunca görülen en yüksek uygulama CPU değerleri (ad → tepe %).
+    private var activePeakCulprits: [String: Double] = [:]
+    private var cancellables = Set<AnyCancellable>()
 
     /// Disk işlemleri için ayrı seri kuyruk (ana iş parçacığını bloklamaz).
     private let ioQueue = DispatchQueue(label: "com.macmonitor.loadevents.io", qos: .utility)
@@ -29,53 +35,131 @@ final class LoadEventRecorder: ObservableObject {
 
     init(cpu: CPUMonitor, process: ProcessMonitor) {
         fileURL = Self.makeFileURL()
-        events = Self.loadFromDisk(fileURL, retention: retention)
+        events = Self.loadFromDisk(fileURL, retention: retention).map { Self.repairCulprits($0) }
 
-        // Mevcut CPU yayınına abone ol — yeni bir ölçüm zamanlayıcısı oluşturmaz.
-        cancellable = cpu.$totalUsage
-            .sink { [weak self, weak process] usage in
-                self?.handle(usage: usage, processes: process?.processes ?? [])
+        cpu.$totalUsage
+            .combineLatest(process.$processes)
+            .sink { [weak self] usage, processes in
+                self?.handle(usage: usage, processes: processes)
             }
+            .store(in: &cancellables)
     }
 
     // MARK: - Olay yakalama
 
     private func handle(usage: Double, processes: [ProcessData]) {
         guard usage >= threshold else {
-            // Riskli dönem bitti: son tepe değerini diske yaz (nadir; her tik değil).
             if inHighLoad {
+                finalizeActiveEvent()
                 inHighLoad = false
+                hasActiveHighLoadEvent = false
+                activeSampleCount = 0
+                activeCpuSum = 0
+                activePeakCulprits = [:]
                 save()
             }
             return
         }
 
         if inHighLoad {
-            // Sürmekte olan olayın tepe değerini bellekte güncelle — disk yazımı yok.
-            if !events.isEmpty {
-                events[0].peak = max(events[0].peak, usage)
-            }
+            guard !events.isEmpty else { return }
+            activeSampleCount += 1
+            activeCpuSum += usage
+            events[0].peak = max(events[0].peak, usage)
+            events[0].avgCPU = activeCpuSum / Double(activeSampleCount)
+            mergePeakCulprits(from: processes)
+            applyCulpritsToActiveEvent()
             return
         }
 
-        // Yeni riskli olay: o anki ilk N işlemi (CPU'ya göre sıralı) yakala.
         inHighLoad = true
-        let culprits = processes.prefix(culpritCount).map {
-            LoadEvent.Culprit(name: $0.name, cpu: $0.cpuUsage)
-        }
-        events.insert(LoadEvent(startedAt: Date(), peak: usage, culprits: Array(culprits)), at: 0)
+        hasActiveHighLoadEvent = true
+        activeSampleCount = 1
+        activeCpuSum = usage
+        activePeakCulprits = [:]
+        mergePeakCulprits(from: processes)
+
+        var event = LoadEvent(startedAt: Date(), peak: usage, avgCPU: usage, culprits: [])
+        applyCulprits(to: &event)
+        events.insert(event, at: 0)
         prune()
         save()
     }
 
+    private func mergePeakCulprits(from processes: [ProcessData]) {
+        // Önce bu tikteki aynı isimli süreçleri topla (çok süreçli uygulamalar — ör. tarayıcı
+        // yardımcıları — tek satırda toplam yükleriyle görünsün), sonra zamana göre tepeyi al.
+        var perTick: [String: Double] = [:]
+        for proc in processes where proc.cpuUsage > 0 {
+            perTick[proc.name, default: 0] += proc.cpuUsage
+        }
+        for (name, cpu) in perTick where cpu > 0.5 {
+            activePeakCulprits[name] = max(activePeakCulprits[name] ?? 0, cpu)
+        }
+    }
+
+    private func applyCulpritsToActiveEvent() {
+        guard !events.isEmpty else { return }
+        applyCulprits(to: &events[0])
+    }
+
+    private func applyCulprits(to event: inout LoadEvent) {
+        var culprits = activePeakCulprits
+            .sorted { $0.value > $1.value }
+            .prefix(culpritCount)
+            .map { LoadEvent.Culprit(name: $0.key, cpu: $0.value) }
+
+        if culprits.isEmpty && event.peak >= threshold {
+            culprits = [LoadEvent.Culprit(name: Self.systemLoadLabel, cpu: event.peak)]
+        }
+
+        event.culprits = Array(culprits)
+    }
+
+    private func finalizeActiveEvent() {
+        guard !events.isEmpty else { return }
+        events[0].endedAt = Date()
+        if activeSampleCount > 0 {
+            events[0].avgCPU = activeCpuSum / Double(activeSampleCount)
+        }
+        applyCulpritsToActiveEvent()
+    }
+
+    static let systemLoadLabel = "—"
+
+    func displayName(for culprit: LoadEvent.Culprit) -> String {
+        displayName(forName: culprit.name)
+    }
+
+    /// Suçlu adını gösterime çevirir — sistem-yükü etiketi ("—") yerelleştirilir.
+    func displayName(forName name: String) -> String {
+        name == Self.systemLoadLabel
+            ? t("Toplam sistem yükü", "Total system load")
+            : name
+    }
+
+    /// Eski kayıtlarda olay bitince 0% ile ezilmiş suçluları düzeltir.
+    private static func repairCulprits(_ event: LoadEvent) -> LoadEvent {
+        var fixed = event
+        let allZero = fixed.culprits.isEmpty || fixed.culprits.allSatisfy { $0.cpu < 1 }
+        if allZero && fixed.peak >= 80 {
+            fixed.culprits = [LoadEvent.Culprit(name: systemLoadLabel, cpu: fixed.peak)]
+        }
+        return fixed
+    }
+
     func clear() {
         events.removeAll()
+        inHighLoad = false
+        hasActiveHighLoadEvent = false
+        activeSampleCount = 0
+        activeCpuSum = 0
+        activePeakCulprits = [:]
         save()
     }
 
     // MARK: - Saklama / temizleme
 
-    /// 1 aydan eski kayıtları (ve güvenlik sınırını aşanları) at.
     private func prune() {
         let cutoff = Date().addingTimeInterval(-retention)
         events.removeAll { $0.startedAt < cutoff }
@@ -94,7 +178,6 @@ final class LoadEventRecorder: ObservableObject {
         return dir.appendingPathComponent("load_events.json")
     }
 
-    /// Diskten yükler ve 1 aydan eski kayıtları eler.
     private static func loadFromDisk(_ url: URL, retention: TimeInterval) -> [LoadEvent] {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([LoadEvent].self, from: data)
@@ -106,7 +189,6 @@ final class LoadEventRecorder: ObservableObject {
             .sorted { $0.startedAt > $1.startedAt }
     }
 
-    /// Anlık görüntüyü arka planda diske yazar (atomik). Yalnızca olay sınırlarında çağrılır.
     private func save() {
         let snapshot = events
         ioQueue.async {

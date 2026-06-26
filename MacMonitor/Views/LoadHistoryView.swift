@@ -50,14 +50,22 @@ struct LoadHistoryView: View {
                             Text(bucket.day.formatted(date: .abbreviated, time: .omitted))
                                 .font(.caption)
                             Spacer()
-                            Text("Tepe %\(Int(bucket.peakCPU.rounded()))")
+                            if bucket.eventCount > 0 {
+                                Text(t("\(bucket.eventCount) olay", "\(bucket.eventCount) events"))
+                                    .font(.caption2.weight(.medium))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                            }
+                            Text(t("Tepe %\(Int(bucket.peakCPU.rounded()))", "Peak %\(Int(bucket.peakCPU.rounded()))"))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(cpuUsageColor(bucket.peakCPU))
                             if let culprit = bucket.topCulprit {
-                                Text("· \(culprit)")
+                                Text("· \(loadEvents.displayName(forName: culprit))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
+                                    .frame(maxWidth: 120, alignment: .trailing)
                             }
                         }
                         .padding(.vertical, 4)

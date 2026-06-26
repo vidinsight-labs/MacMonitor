@@ -65,14 +65,9 @@ enum PageLayout {
         return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
     }
 
-    static func coreGridColumns(for width: CGFloat, spacing: CGFloat = 12) -> [GridItem] {
-        let count: Int
-        switch ContentWidthTier(width: width) {
-        case .compact:  count = 2
-        case .regular:  count = 3
-        case .wide:     count = 4
-        }
-        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
+    /// CPU çekirdek kutuları — her zaman 4 sütun (2 satır × 4 on 8-core vb.).
+    static func coreGridColumns(spacing: CGFloat = 12) -> [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: spacing), count: 4)
     }
 
     static func contentMaxWidth(for width: CGFloat) -> CGFloat {
@@ -148,6 +143,14 @@ struct HeroMetricLayout<Gauge: View, Summary: View>: View {
             }
         }
     }
+}
+
+// MARK: - Marka renkleri
+
+enum BrandColors {
+    static let vidinsight = Color(red: 161/255, green: 77/255, blue: 1)
+    static let vidinsightSoft = Color(red: 161/255, green: 77/255, blue: 1).opacity(0.75)
+    static let logoAspect: CGFloat = 1459 / 553
 }
 
 extension View {

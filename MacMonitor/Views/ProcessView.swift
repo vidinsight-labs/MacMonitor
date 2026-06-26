@@ -41,8 +41,8 @@ struct ProcessView: View {
                 limitedListBanner
             }
 
-            if let message = monitor.actionMessage {
-                actionBanner(message)
+            if let feedback = monitor.actionFeedback {
+                actionBanner(feedback)
             }
 
             if displayed.isEmpty {
@@ -111,12 +111,12 @@ struct ProcessView: View {
 
     // MARK: - Zorla kapat geri bildirim bandı
 
-    private func actionBanner(_ message: String) -> some View {
-        let isError = message.contains("yetki") || message.contains("kapatılamadı")
+    private func actionBanner(_ feedback: ProcessMonitor.ActionFeedback) -> some View {
+        let isError = feedback.isError
         return HStack(spacing: 8) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isError ? .orange : .green)
-            Text(message)
+            Text(feedback.text)
                 .font(.callout)
             Spacer()
         }

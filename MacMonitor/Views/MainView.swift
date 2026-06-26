@@ -87,8 +87,9 @@ struct MainView: View {
             .navigationTitle("MacMonitor")
             .safeAreaInset(edge: .bottom) {
                 LanguageToggle()
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
                     .background(.bar)
             }
         } detail: {

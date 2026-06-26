@@ -5,3 +5,12 @@ Config/Local.xcconfig
 build/MacMonitor.xcarchive
 build/appstore-export/
 .derivedData/
+
+# Derleme çıktıları
+build/
+
+# Dağıtım paketleri (repoya eklenmez)
+*.dmg
+
+# macOS
+.DS_Store

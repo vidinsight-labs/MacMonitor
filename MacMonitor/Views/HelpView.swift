@@ -106,6 +106,8 @@ struct HelpView: View {
                                   body: t("Bir süreç çok kaynak tüketiyor ve yanıt vermiyorsa, satıra sağ tıklayıp 'Zorla Kapat' diyebilirsin. (Sistem süreçleri için yönetici izni gerekebilir.)", "If a process is consuming a lot of resources and not responding, you can right-click its row and choose 'Force Quit'. (Administrator permission may be required for system processes.)"))
                     ]
                 )
+
+                poweredByFooter
             }
             .responsivePageLayout()
         }
@@ -121,6 +123,59 @@ struct HelpView: View {
             title: t("Yardım", "Help"),
             subtitle: t("Sekmelerin anlamı ve değerlerin neden değiştiği.", "What the tabs mean and why the values change.")
         )
+    }
+
+    // MARK: - Powered by
+
+    private var poweredByFooter: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.15))
+                .frame(height: 1)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 22)
+
+            VStack(spacing: 12) {
+                Text("powered by")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(BrandColors.vidinsightSoft)
+                    .tracking(1.4)
+                    .textCase(.lowercase)
+
+                Image("VidinsightMark")
+                    .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
+                    .aspectRatio(BrandColors.logoAspect, contentMode: .fit)
+                    .frame(maxWidth: 168)
+                    .accessibilityLabel("vidinsight")
+            }
+            .frame(maxWidth: 280)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                BrandColors.vidinsight.opacity(0.25),
+                                Color.secondary.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: BrandColors.vidinsight.opacity(0.06), radius: 12, y: 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Konu kartı

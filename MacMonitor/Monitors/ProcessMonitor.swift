@@ -21,8 +21,15 @@ final class ProcessMonitor: ObservableObject {
     /// Sandbox'ta yalnızca kullanıcı uygulamaları listelenir; tam libproc listesi değil.
     @Published private(set) var isLimitedList = false
 
-    /// Zorla kapatma sonrası kullanıcıya gösterilecek geçici mesaj.
-    @Published private(set) var actionMessage: String?
+    /// Zorla kapatma sonrası kullanıcıya gösterilecek geçici geri bildirim (metin + hata mı).
+    @Published private(set) var actionFeedback: ActionFeedback?
+
+    /// Zorla kapatma geri bildirimi — başarı/hata ayrımı metinden değil bu bayraktan okunur
+    /// (dilden bağımsız; EN modunda da doğru renk/ikon).
+    struct ActionFeedback: Equatable {
+        let text: String
+        let isError: Bool
+    }
 
     private let interval: TimeInterval = 3.0
     private var timer: Timer?
@@ -97,18 +104,18 @@ final class ProcessMonitor: ObservableObject {
             message = t("\(succeeded) işlem kapatıldı; \(failed.joined(separator: ", ")) için yetki gerekiyor.",
                         "\(succeeded) closed; permission required for \(failed.joined(separator: ", ")).")
         }
-        setActionMessage(message)
+        setActionMessage(message, isError: !failed.isEmpty)
         update()
     }
 
     /// Mesajı yayınlar ve ~4 sn sonra (yeni mesaj gelmediyse) temizler.
-    private func setActionMessage(_ message: String) {
+    private func setActionMessage(_ message: String, isError: Bool) {
         messageToken += 1
         let token = messageToken
-        actionMessage = message
+        actionFeedback = ActionFeedback(text: message, isError: isError)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
             guard let self, self.messageToken == token else { return }
-            self.actionMessage = nil
+            self.actionFeedback = nil
         }
     }
 

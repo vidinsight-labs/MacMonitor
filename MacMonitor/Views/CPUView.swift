@@ -16,8 +16,10 @@ struct CPUView: View {
                 heroCard
                 coresCard
                 historyCard
+                // Aşağıdaki iki kart yalnızca LoadEventRecorder'ı gözleyen ayrı görünümlerdir;
+                // böylece 2 sn'lik CPU tiki bunları (ve olayların yeniden bucket'lanmasını) tetiklemez.
                 LoadHistoryView()
-                eventsCard
+                LoadEventsCard()
             }
             .responsivePageLayout()
         }
@@ -87,7 +89,7 @@ struct CPUView: View {
             if monitor.cores.isEmpty {
                 placeholder(t("Veri toplanıyor…", "Collecting data…"))
             } else {
-                LazyVGrid(columns: PageLayout.coreGridColumns(for: contentWidth), spacing: 12) {
+                LazyVGrid(columns: PageLayout.coreGridColumns(), spacing: 12) {
                     ForEach(monitor.cores) { core in
                         CoreTile(core: core)
                     }
@@ -171,77 +173,6 @@ struct CPUView: View {
         return h.enumerated().map { (i, value) in (x: -(n - 1 - i) * 2, y: value) }
     }
 
-    // MARK: - Yük olayları kartı (geriye dönük takip)
-
-    private var eventsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                sectionTitle(icon: "exclamationmark.bubble", title: t("Yük Olayları", "Load Events"))
-                if !loadEvents.events.isEmpty {
-                    Button(t("Temizle", "Clear")) { loadEvents.clear() }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                }
-            }
-
-            Text(t("CPU %\(Int(loadEvents.threshold)) üstüne çıktığında o an ve yükü alan işlemler kaydedilir. Son 1 ay saklanır.", "When CPU rises above %\(Int(loadEvents.threshold)), that moment and the processes taking up the load are recorded. Kept for the last 1 month."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if loadEvents.events.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                    Text(t("Riskli yük kaydı yok — sistem rahat.", "No risky load records — the system is relaxed."))
-                        .foregroundStyle(.secondary)
-                }
-                .font(.callout)
-                .padding(.vertical, 8)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(loadEvents.events.prefix(10).enumerated()), id: \.element.id) { index, event in
-                        if index > 0 { Divider() }
-                        eventRow(event)
-                    }
-                }
-            }
-        }
-        .card()
-    }
-
-    private func eventRow(_ event: LoadEvent) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle()
-                .fill(cpuUsageColor(event.peak))
-                .frame(width: 8, height: 8)
-                .padding(.top, 5)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(event.startedAt.formatted(date: .omitted, time: .standard))
-                        .font(.callout.weight(.medium))
-                        .monospacedDigit()
-                    Text(t("· tepe %\(Int(event.peak.rounded()))", "· peak %\(Int(event.peak.rounded()))"))
-                        .font(.callout)
-                        .foregroundStyle(cpuUsageColor(event.peak))
-                }
-                Text(culpritText(event))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 8)
-    }
-
-    private func culpritText(_ event: LoadEvent) -> String {
-        guard !event.culprits.isEmpty else { return t("İşlem bilgisi yok", "No process information") }
-        return event.culprits
-            .map { "\($0.name) %\(Int($0.cpu.rounded()))" }
-            .joined(separator: "  ·  ")
-    }
-
     // MARK: - Ortak parçalar
 
     private func placeholder(_ text: String) -> some View {
@@ -281,6 +212,120 @@ struct CPUView: View {
     }
     private var peakCore: Double {
         monitor.cores.map(\.usage).max() ?? 0
+    }
+}
+
+// MARK: - Yük olayları kartı (geriye dönük takip)
+
+/// Yalnızca `LoadEventRecorder`'ı gözleyen ayrı kart — CPU'nun 2 sn'lik tiki bu kartı
+/// (hafta özeti, olay listesi, satır yeniden kimlikleme) tekrar hesaplatmaz.
+struct LoadEventsCard: View {
+    @ObservedObject private var loc = Localizer.shared
+    @EnvironmentObject private var loadEvents: LoadEventRecorder
+
+    @State private var expandedEventID: UUID?
+    @State private var showAllEvents = false
+
+    private var weekSummary: LoadEventWeekSummary {
+        LoadEventFormatting.weekSummary(from: loadEvents.events,
+                                        liveFirst: loadEvents.hasActiveHighLoadEvent)
+    }
+
+    private var visibleEvents: [LoadEvent] {
+        let limit = showAllEvents ? loadEvents.events.count : min(30, loadEvents.events.count)
+        return Array(loadEvents.events.prefix(limit))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                sectionTitle(icon: "exclamationmark.bubble", title: t("Yük Olayları", "Load Events"))
+                if !loadEvents.events.isEmpty {
+                    Button(t("Temizle", "Clear")) { loadEvents.clear() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+            }
+
+            Text(t("CPU %\(Int(loadEvents.threshold)) üstüne çıktığında başlangıç, süre, tepe/ortalama CPU ve yükü alan işlemler kaydedilir. Son 1 ay saklanır.", "When CPU rises above %\(Int(loadEvents.threshold)), start time, duration, peak/average CPU and responsible processes are recorded. Kept for the last 1 month."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if loadEvents.events.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text(t("Riskli yük kaydı yok — sistem rahat.", "No risky load records — the system is relaxed."))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.callout)
+                .padding(.vertical, 8)
+            } else {
+                weekSummaryBanner
+
+                VStack(spacing: 0) {
+                    ForEach(Array(visibleEvents.enumerated()), id: \.element.id) { index, event in
+                        if index > 0 { Divider() }
+                        LoadEventRowView(
+                            event: event,
+                            isLive: loadEvents.hasActiveHighLoadEvent && index == 0,
+                            isExpanded: expandedEventID == event.id,
+                            onToggle: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    expandedEventID = expandedEventID == event.id ? nil : event.id
+                                }
+                            }
+                        )
+                    }
+                }
+
+                if loadEvents.events.count > 30 {
+                    Button(showAllEvents
+                           ? t("Daha az göster", "Show less")
+                           : t("Tümünü göster (\(loadEvents.events.count))", "Show all (\(loadEvents.events.count))")) {
+                        withAnimation { showAllEvents.toggle() }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+                }
+            }
+        }
+        .card()
+    }
+
+    private var weekSummaryBanner: some View {
+        let fmt = LoadEventFormatting.duration(weekSummary.totalDuration)
+        return HStack(spacing: 12) {
+            summaryChip(icon: "calendar", value: "\(weekSummary.eventCount)",
+                        label: t("7 günde olay", "events in 7d"))
+            summaryChip(icon: "clock", value: t(fmt.tr, fmt.en),
+                        label: t("toplam süre", "total duration"))
+            if let top = weekSummary.topCulprit {
+                summaryChip(icon: "app.fill", value: loadEvents.displayName(forName: top),
+                            label: t("en sık suçlu", "top culprit"))
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.secondary.opacity(0.06))
+        )
+    }
+
+    private func summaryChip(icon: String, value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label(label, systemImage: icon)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .labelStyle(.titleAndIcon)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
